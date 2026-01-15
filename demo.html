@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance Agent UI 功能演示</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f8f9fa;
+            margin: 10px 0;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        .message.reports_update { background-color: #e7f3ff; }
+        .message.ui_state_update { background-color: #e7ffe7; }
+        .message.report_analysis_update { background-color: #fff3cd; }
+        .message.alert_triggered { background-color: #f8d7da; }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: white;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .chat-messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .chat-message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 18px;
+            margin-bottom: 8px;
+            position: relative;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-message.user-message {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 5px;
+        }
+        .chat-message.assistant-message {
+            background-color: #e9ecef;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 5px;
+        }
+        .chat-input-area {
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input-area input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+        }
+        .chat-input-area input:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+        .chat-input-area button {
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💰 Finance Agent 个人投资助手 功能演示</h1>
+        <p>展示WebSocket消息推送和UI组件功能</p>
+    </div>
+
+    <!-- 对话框容器 -->
+    <div class="container chat-container">
+        <h2>💬 聊天对话</h2>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chatInput" placeholder="输入消息..." disabled>
+            <button id="sendChatBtn" class="btn" disabled>发送</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>WebSocket 连接控制</h2>
+        <button id="connectBtn" class="btn">连接到服务器</button>
+        <button id="disconnectBtn" class="btn" disabled>断开连接</button>
+        <button id="sendTestBtn" class="btn">发送测试消息</button>
+        <button id="refreshReportsBtn" class="btn">刷新报告列表</button>
+        
+        <div id="status" class="status disconnected">未连接</div>
+        <div id="messages" class="messages"></div>
+        
+        <h3>服务器信息</h3>
+        <button id="healthCheckBtn" class="btn">检查服务器健康状态</button>
+        <div id="serverInfo" style="margin-top: 10px; padding: 10px; background-color: #f8f9fa; border-radius: 5px;">
+            服务器状态: 未知
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📊 投资组合仪表盘 (PortfolioDashboard)</h2>
+        <div class="dashboard">
+            <div class="card">
+                <h3>总资产</h3>
+                <p id="totalValue">¥0.00</p>
+            </div>
+            <div class="card">
+                <h3>现金余额</h3>
+                <p id="cashBalance">¥0.00</p>
+            </div>
+            <div class="card">
+                <h3>总盈亏</h3>
+                <p id="totalGain">¥0.00</p>
+            </div>
+            <div class="card">
+                <h3>总盈亏率</h3>
+                <p id="totalGainPercent">0.00%</p>
+            </div>
+        </div>
+        
+        <h3>持仓详情</h3>
+        <table id="holdingsTable" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #f0f0f0;">
+                    <th style="border: 1px solid #ddd; padding: 8px;">标的</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">数量</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">当前价格</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">当前价值</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">盈亏</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">盈亏率</th>
+                </tr>
+            </thead>
+            <tbody id="holdingsBody">
+                <!-- 持仓数据将在这里显示 -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="container">
+        <h2>📈 市场监控 (MarketMonitor)</h2>
+        <h3>报告分析更新</h3>
+        <div id="reportAnalysis" style="margin: 10px 0;"></div>
+        
+        <h3>趋势分析</h3>
+        <div id="trends" style="margin: 10px 0;"></div>
+        
+        <h3>报告列表</h3>
+        <div id="reportsList" style="margin: 10px 0;"></div>
+    </div>
+
+    <div class="container">
+        <h2>🔔 关注列表 (WatchlistTable)</h2>
+        <h3>预警信息</h3>
+        <div id="alerts" style="margin: 10px 0;"></div>
+        
+        <h3>关注标的</h3>
+        <table id="watchlistTable" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background-color: #f0f0f0;">
+                    <th style="border: 1px solid #ddd; padding: 8px;">名称</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">代码</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">当前价格</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">状态</th>
+                </tr>
+            </thead>
+            <tbody id="watchlistBody">
+                <!-- 关注列表数据将在这里显示 -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        class FinanceAgentUI {
+            constructor() {
+                this.ws = null;
+                this.isConnected = false;
+                
+                this.connectBtn = document.getElementById('connectBtn');
+                this.disconnectBtn = document.getElementById('disconnectBtn');
+                this.sendTestBtn = document.getElementById('sendTestBtn');
+                this.statusDiv = document.getElementById('status');
+                this.messagesDiv = document.getElementById('messages');
+                
+                // 聊天相关元素
+                this.chatMessagesDiv = document.getElementById('chatMessages');
+                this.chatInput = document.getElementById('chatInput');
+                this.sendChatBtn = document.getElementById('sendChatBtn');
+                
+                this.connectBtn.addEventListener('click', () => this.connect());
+                this.disconnectBtn.addEventListener('click', () => this.disconnect());
+                this.sendTestBtn.addEventListener('click', () => this.sendTestMessage());
+                document.getElementById('refreshReportsBtn').addEventListener('click', () => this.requestReportsList());
+                document.getElementById('healthCheckBtn').addEventListener('click', () => this.checkHealth());
+                
+                // 聊天输入框事件
+                this.chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendChatMessage();
+                    }
+                });
+                
+                this.sendChatBtn.addEventListener('click', () => this.sendChatMessage());
+            }
+            
+            async checkHealth() {
+                try {
+                    const response = await fetch('http://localhost:3000/health');
+                    const data = await response.json();
+                    
+                    const serverInfo = document.getElementById('serverInfo');
+                    serverInfo.innerHTML = `
+                        <strong>服务器状态:</strong> ${data.status}<br>
+                        <strong>服务:</strong> ${data.service}<br>
+                        <strong>版本:</strong> ${data.version}<br>
+                        <strong>时间:</strong> ${new Date().toLocaleString()}
+                    `;
+                } catch (error) {
+                    const serverInfo = document.getElementById('serverInfo');
+                    serverInfo.innerHTML = `<strong>错误:</strong> 无法连接到服务器 (${error.message})`;
+                }
+            }
+            
+            requestReportsList() {
+                if (!this.isConnected || !this.ws) {
+                    alert('请先连接到服务器');
+                    return;
+                }
+                
+                // 请求报告列表
+                this.ws.send(JSON.stringify({
+                    type: 'request_reports'
+                }));
+                this.addMessage('已发送报告列表请求', 'system');
+            }
+            
+            connect() {
+                if (this.ws) {
+                    this.ws.close();
+                }
+                
+                this.ws = new WebSocket('ws://localhost:3000/ws');
+                
+                this.ws.onopen = () => {
+                    this.isConnected = true;
+                    this.updateStatus('已连接到Finance Agent服务器', 'connected');
+                    this.addMessage('连接已建立', 'system');
+                    
+                    // 启用聊天输入框
+                    this.chatInput.disabled = false;
+                    this.sendChatBtn.disabled = false;
+                    
+                    // 发送订阅消息
+                    this.ws.send(JSON.stringify({
+                        type: 'subscribe',
+                        sessionId: 'demo_session_1'
+                    }));
+                    
+                    // 订阅报告分析
+                    this.ws.send(JSON.stringify({
+                        type: 'subscribe_report_analysis',
+                        sessionId: 'demo_session_1'
+                    }));
+                    
+                    // 请求报告列表
+                    this.ws.send(JSON.stringify({
+                        type: 'request_reports'
+                    }));
+                };
+                
+                this.ws.onmessage = (event) => {
+                    try {
+                        const message = JSON.parse(event.data);
+                        this.handleMessage(message);
+                    } catch (e) {
+                        console.error('解析消息失败:', e);
+                        this.addMessage(`解析消息失败: ${event.data}`, 'error');
+                    }
+                };
+                
+                this.ws.onclose = () => {
+                    this.isConnected = false;
+                    this.updateStatus('连接已断开', 'disconnected');
+                    this.addMessage('连接已断开', 'system');
+                    
+                    // 禁用聊天输入框
+                    this.chatInput.disabled = true;
+                    this.sendChatBtn.disabled = true;
+                };
+                
+                this.ws.onerror = (error) => {
+                    console.error('WebSocket错误:', error);
+                    this.updateStatus('连接错误', 'disconnected');
+                    this.addMessage(`WebSocket错误: ${error}`, 'error');
+                };
+            }
+            
+            disconnect() {
+                if (this.ws) {
+                    this.ws.close();
+                }
+            }
+            
+            sendTestMessage() {
+                if (!this.isConnected || !this.ws) {
+                    alert('请先连接到服务器');
+                    return;
+                }
+                
+                const testMessage = {
+                    type: 'chat',
+                    content: '请分析最新的金融报告',
+                    sessionId: 'demo_session_1'
+                };
+                
+                this.ws.send(JSON.stringify(testMessage));
+                this.addMessage(`发送消息: ${testMessage.content}`, 'outgoing');
+            }
+            
+            sendChatMessage() {
+                const content = this.chatInput.value.trim();
+                if (!content) {
+                    return;
+                }
+                
+                if (!this.isConnected || !this.ws) {
+                    alert('请先连接到服务器');
+                    return;
+                }
+                
+                const message = {
+                    type: 'chat',
+                    content: content,
+                    sessionId: 'demo_session_1'
+                };
+                
+                // 显示用户消息
+                this.addChatMessage(content, 'user');
+                
+                this.ws.send(JSON.stringify(message));
+                this.chatInput.value = '';
+                this.chatInput.focus();
+            }
+            
+            addChatMessage(content, sender) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${sender}-message`;
+                messageDiv.textContent = content;
+                
+                this.chatMessagesDiv.appendChild(messageDiv);
+                this.chatMessagesDiv.scrollTop = this.chatMessagesDiv.scrollHeight;
+            }
+            
+            updateChatMessage(content, sender) {
+                // 查找最后一个指定发送者的消息并更新其内容
+                const messages = this.chatMessagesDiv.querySelectorAll(`.chat-message.${sender}-message`);
+                if (messages.length > 0) {
+                    const lastMessage = messages[messages.length - 1];
+                    lastMessage.textContent = content;
+                }
+            }
+            
+            handleMessage(message) {
+                console.log('收到消息:', message);
+                this.addMessage(`收到 ${message.type} 消息`, message.type);
+                
+                switch(message.type) {
+                    case 'connected':
+                        this.addMessage('服务器连接确认', 'system');
+                        break;
+                    case 'user_message':
+                        // 用户消息回显
+                        if (message.content) {
+                            this.addChatMessage(message.content, 'user');
+                        }
+                        break;
+                    case 'assistant_message':
+                        // AI助手消息（流式）
+                        if (message.content) {
+                            // 检查是否已有AI消息，如果是流式响应则更新最后一条消息
+                            const assistantMessages = this.chatMessagesDiv.querySelectorAll('.chat-message.assistant-message');
+                            if (assistantMessages.length > 0) {
+                                // 更新最后一条AI消息
+                                const lastMessage = assistantMessages[assistantMessages.length - 1];
+                                lastMessage.textContent = lastMessage.textContent + message.content;
+                            } else {
+                                // 添加新消息
+                                this.addChatMessage(message.content, 'assistant');
+                            }
+                        }
+                        break;
+                    case 'result':
+                        // 对话完成
+                        if (message.success === false) {
+                            this.addChatMessage(`错误: ${message.error || '请求失败'}`, 'assistant');
+                        }
+                        break;
+                    case 'reports_update':
+                        this.addMessage(`收到 ${message.reports?.length || 0} 份报告`, 'reports_update');
+                        this.updateReportsList(message.reports || []);
+                        break;
+                    case 'ui_state_update':
+                        this.addMessage(`UI状态更新: ${message.stateId}`, 'ui_state_update');
+                        this.updateUIState(message.stateId, message.data);
+                        break;
+                    case 'report_analysis_update':
+                        this.addMessage(`报告分析更新: ${message.title}`, 'report_analysis_update');
+                        this.updateReportAnalysis(message);
+                        break;
+                    case 'alert_triggered':
+                        this.addMessage(`预警触发: ${message.message}`, 'alert_triggered');
+                        this.addAlert(message);
+                        break;
+                    case 'subscribed':
+                        this.addMessage(`已订阅会话: ${message.sessionId}`, 'system');
+                        break;
+                    case 'error':
+                        this.addMessage(`错误: ${message.error}`, 'error');
+                        this.addChatMessage(`错误: ${message.error}`, 'assistant');
+                        break;
+                    default:
+                        this.addMessage(`未知消息类型: ${message.type}`, 'system');
+                }
+            }
+            
+            updateUIState(stateId, data) {
+                console.log('UI状态更新:', stateId, data);
+                
+                if (stateId === 'portfolio_dashboard') {
+                    this.updatePortfolioDashboard(data);
+                } else if (stateId === 'watchlist') {
+                    this.updateWatchlist(data);
+                }
+            }
+            
+            updatePortfolioDashboard(data) {
+                if (data.total_value !== undefined) {
+                    document.getElementById('totalValue').textContent = `¥${data.total_value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                }
+                if (data.cash_balance !== undefined) {
+                    document.getElementById('cashBalance').textContent = `¥${data.cash_balance.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                }
+                if (data.total_gain !== undefined) {
+                    document.getElementById('totalGain').textContent = `¥${data.total_gain.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                }
+                if (data.total_gain_percentage !== undefined) {
+                    document.getElementById('totalGainPercent').textContent = `${data.total_gain_percentage.toFixed(2)}%`;
+                }
+                
+                if (data.holdings && Array.isArray(data.holdings)) {
+                    const tbody = document.getElementById('holdingsBody');
+                    tbody.innerHTML = '';
+                    
+                    data.holdings.forEach(holding => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td style="border: 1px solid #ddd; padding: 8px;">${holding.name || holding.symbol || 'N/A'}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">${holding.quantity || 0}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">¥${(holding.current_price || 0).toFixed(2)}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">¥${(holding.current_value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px; color: ${holding.gain >= 0 ? 'green' : 'red'};">¥${Math.abs(holding.gain || 0).toFixed(2)} ${holding.gain >= 0 ? '↑' : '↓'}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px; color: ${holding.gain_percentage >= 0 ? 'green' : 'red'};">${(holding.gain_percentage || 0).toFixed(2)}%</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            }
+            
+            updateWatchlist(data) {
+                if (data.items && Array.isArray(data.items)) {
+                    const tbody = document.getElementById('watchlistBody');
+                    tbody.innerHTML = '';
+                    
+                    data.items.forEach(item => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td style="border: 1px solid #ddd; padding: 8px;">${item.name || 'N/A'}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">${item.symbol || 'N/A'}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">¥${(item.current_price || 0).toFixed(2)}</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;">
+                                <span style="color: ${item.status === 'active' ? 'green' : item.status === 'triggered' ? 'red' : 'gray'};">
+                                    ${item.status === 'active' ? '活跃' : item.status === 'triggered' ? '已触发' : '已禁用'}
+                                </span>
+                            </td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+            }
+            
+            updateReportsList(reports) {
+                const container = document.getElementById('reportsList');
+                if (reports.length === 0) {
+                    container.innerHTML = '<p>暂无报告数据</p>';
+                    return;
+                }
+                
+                let html = '<div style="max-height: 300px; overflow-y: auto;">';
+                reports.forEach(report => {
+                    // 从JSON字符串中提取key_drivers
+                    let keyDrivers = '暂无';
+                    if (report.key_drivers) {
+                        try {
+                            const drivers = JSON.parse(report.key_drivers);
+                            if (Array.isArray(drivers)) {
+                                keyDrivers = drivers.join(', ');
+                            } else {
+                                keyDrivers = report.key_drivers;
+                            }
+                        } catch (e) {
+                            keyDrivers = report.key_drivers;
+                        }
+                    }
+                    
+                    html += `
+                        <div style="border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 5px;">
+                            <h4>${report.title || report.report_id || '未知标题'}</h4>
+                            <p><strong>类别:</strong> ${report.category || 'N/A'}</p>
+                            <p><strong>一句话摘要:</strong> ${report.summary_one_sentence || '暂无摘要'}</p>
+                            <p><strong>核心驱动因素:</strong> ${keyDrivers}</p>
+                            <p><strong>发布日期:</strong> ${report.date_published || 'N/A'}</p>
+                            <p><strong>重要性评分:</strong> ${report.importance_score || 'N/A'}</p>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            updateReportAnalysis(data) {
+                const container = document.getElementById('reportAnalysis');
+                container.innerHTML = `
+                    <div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px;">
+                        <h4>${data.title || '报告分析'}</h4>
+                        <p>${data.analysis?.summary || data.summary || '暂无摘要'}</p>
+                        <small>时间: ${data.timestamp || new Date().toLocaleString()}</small>
+                    </div>
+                `;
+                
+                if (data.analysis?.trends || data.trends) {
+                    const trends = data.analysis?.trends || data.trends;
+                    const trendsContainer = document.getElementById('trends');
+                    trendsContainer.innerHTML = `
+                        <div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px;">
+                            <h4>趋势分析</h4>
+                            ${trends.map(trend => `
+                                <div style="margin: 5px 0;">
+                                    ${trend.indicator}: ${trend.change >= 0 ? '+' : ''}${trend.change} (${trend.change_percent >= 0 ? '+' : ''}${trend.change_percent}%)
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            }
+            
+            addAlert(alertData) {
+                const alertsContainer = document.getElementById('alerts');
+                const alertDiv = document.createElement('div');
+                alertDiv.style.cssText = `
+                    border: 1px solid #ddd; 
+                    padding: 10px; 
+                    margin: 10px 0; 
+                    border-radius: 5px; 
+                    background-color: ${alertData.severity === 'critical' ? '#f8d7da' : 
+                                     alertData.severity === 'high' ? '#fff3cd' : 
+                                     alertData.severity === 'medium' ? '#cce7ff' : '#d4edda'};
+                    border-left: 4px solid ${alertData.severity === 'critical' ? '#dc3545' : 
+                                          alertData.severity === 'high' ? '#ffc107' : 
+                                          alertData.severity === 'medium' ? '#007bff' : '#28a745'};
+                `;
+                alertDiv.innerHTML = `
+                    <strong>${alertData.title || '预警'}</strong><br>
+                    ${alertData.message || '预警消息'}<br>
+                    <small>时间: ${alertData.timestamp || new Date().toLocaleString()} | 
+                    严重程度: ${alertData.severity || 'info'}</small>
+                `;
+                
+                alertsContainer.prepend(alertDiv);
+            }
+            
+            updateStatus(text, statusClass) {
+                this.statusDiv.textContent = text;
+                this.statusDiv.className = `status ${statusClass}`;
+            }
+            
+            addMessage(content, type = 'system') {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.textContent = `[${new Date().toLocaleTimeString()}] ${content}`;
+                this.messagesDiv.appendChild(messageDiv);
+                this.messagesDiv.scrollTop = this.messagesDiv.scrollHeight;
+            }
+        }
+        
+        // 初始化应用
+        document.addEventListener('DOMContentLoaded', () => {
+            new FinanceAgentUI();
+        });
+    </script>
+</body>
+</html>
