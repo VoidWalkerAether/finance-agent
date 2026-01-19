@@ -9,5 +9,6 @@ Repositories 模块
 """
 
 from .watchlist_repo import WatchlistRepository
+from .portfolio_repository import PortfolioRepository
 
-__all__ = ['WatchlistRepository']
+__all__ = ['WatchlistRepository', 'PortfolioRepository']

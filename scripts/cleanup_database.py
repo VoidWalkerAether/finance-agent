@@ -9,9 +9,12 @@ Finance Agent 数据库管理脚本
 4. 列出所有报告
 5. 列出所有关联关系
 6. 查询指定报告的关联关系
+7. 列出所有持仓数据
+8. 查看指定用户持仓详情
+9. 删除指定用户持仓数据
 
 使用方法：
-python cleanup_database.py [--all] [--report-id REPORT_ID] [--stats] [--list] [--list-relationships] [--report-relationships REPORT_ID]
+python cleanup_database.py [options]
 
 参数：
 --all: 清理所有报告数据
@@ -20,6 +23,9 @@ python cleanup_database.py [--all] [--report-id REPORT_ID] [--stats] [--list] [-
 --list: 列出所有报告
 --list-relationships: 列出所有关联关系
 --report-relationships REPORT_ID: 查询指定报告的关联关系
+--list-portfolios: 列出所有持仓数据
+--portfolio-detail USER_ID: 查看指定用户的持仓详情
+--cleanup-portfolio USER_ID: 删除指定用户的持仓数据
 """
 
 import argparse
@@ -104,6 +110,11 @@ def show_stats():
         relationships_count = cursor.fetchone()['count']
         print(f"🔗 关联关系数: {relationships_count}")
         
+        # 持仓用户数
+        cursor.execute("SELECT COUNT(*) as count FROM user_portfolios")
+        portfolios_count = cursor.fetchone()['count']
+        print(f"💼 持仓用户数: {portfolios_count}")
+        
         conn.close()
         
     except Exception as e:
@@ -134,6 +145,10 @@ def cleanup_all_reports():
         cursor.execute("DELETE FROM watchlist")
         watchlist_count = cursor.rowcount
         
+        # 清理持仓数据
+        cursor.execute("DELETE FROM user_portfolios")
+        portfolios_count = cursor.rowcount
+        
         conn.commit()
         conn.close()
         
@@ -142,6 +157,7 @@ def cleanup_all_reports():
         print(f"   • UI 状态: {ui_states_count} 条")
         print(f"   • 组件实例: {component_count} 条")
         print(f"   • 关注列表: {watchlist_count} 条")
+        print(f"   • 持仓数据: {portfolios_count} 条")
         print(f"\n🎉 所有数据已清理完成!")
         
     except Exception as e:
@@ -309,6 +325,159 @@ def list_relationships_by_report(report_id: str):
     except Exception as e:
         print(f"❌ 获取关联关系失败: {e}")
 
+
+def list_all_portfolios():
+    """列出所有持仓数据"""
+    print("💼 所有持仓数据列表")
+    print("=" * 100)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id, total_asset_value, cash_position, holdings_json, 
+                   created_at, updated_at
+            FROM user_portfolios
+            ORDER BY updated_at DESC
+        """)
+        
+        portfolios = cursor.fetchall()
+        
+        if not portfolios:
+            print("📭 暂无持仓数据")
+            return
+        
+        print(f"{'用户ID':<15} {'总资产':<15} {'现金':<15} {'持仓数':<8} {'更新时间':<20}")
+        print("-" * 100)
+        
+        import json
+        for portfolio in portfolios:
+            try:
+                holdings = json.loads(portfolio['holdings_json'])
+                holdings_count = len(holdings)
+            except:
+                holdings_count = 0
+            
+            print(f"{portfolio['user_id']:<15} "
+                  f"{portfolio['total_asset_value']:>14,.2f} "
+                  f"{portfolio['cash_position']:>14,.2f} "
+                  f"{holdings_count:<8} "
+                  f"{portfolio['updated_at']:<20}")
+        
+        print(f"\n📈 总计: {len(portfolios)} 个用户持仓")
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ 获取持仓列表失败: {e}")
+
+
+def show_portfolio_detail(user_id: str):
+    """显示指定用户的持仓详情"""
+    print(f"💼 用户 '{user_id}' 的持仓详情")
+    print("=" * 100)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id, total_asset_value, cash_position, holdings_json, 
+                   created_at, updated_at
+            FROM user_portfolios
+            WHERE user_id = ?
+        """, (user_id,))
+        
+        portfolio = cursor.fetchone()
+        
+        if not portfolio:
+            print(f"⚠️  用户 '{user_id}' 没有持仓数据")
+            return
+        
+        print(f"\n📊 基本信息:")
+        print(f"   用户ID: {portfolio['user_id']}")
+        print(f"   总资产: {portfolio['total_asset_value']:,.2f}")
+        print(f"   现金头寸: {portfolio['cash_position']:,.2f}")
+        print(f"   创建时间: {portfolio['created_at']}")
+        print(f"   更新时间: {portfolio['updated_at']}")
+        
+        # 解析持仓明细
+        import json
+        try:
+            holdings = json.loads(portfolio['holdings_json'])
+            
+            if holdings:
+                print(f"\n📋 持仓明细 ({len(holdings)} 项):")
+                print(f"{'名称':<20} {'类别':<15} {'市值':<15} {'占比':<8} {'状态':<10}")
+                print("-" * 100)
+                
+                for holding in holdings:
+                    print(f"{holding.get('name', 'N/A'):<20} "
+                          f"{holding.get('category', 'N/A'):<15} "
+                          f"{holding.get('market_value', 0):>14,.2f} "
+                          f"{holding.get('percentage', 'N/A'):<8} "
+                          f"{holding.get('status', 'N/A'):<10}")
+                    
+                    # 显示详细信息
+                    if holding.get('cost_price') or holding.get('current_price'):
+                        details = []
+                        if holding.get('cost_price'):
+                            details.append(f"成本价: {holding['cost_price']:.2f}")
+                        if holding.get('current_price'):
+                            details.append(f"当前价: {holding['current_price']:.2f}")
+                        if holding.get('quantity'):
+                            details.append(f"数量: {holding['quantity']:.2f}")
+                        if holding.get('note'):
+                            details.append(f"备注: {holding['note']}")
+                        
+                        if details:
+                            print(f"         {' | '.join(details)}")
+            else:
+                print(f"\n📭 暂无持仓明细")
+                
+        except json.JSONDecodeError as e:
+            print(f"\n❌ 解析持仓数据失败: {e}")
+        
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ 获取持仓详情失败: {e}")
+
+
+def cleanup_portfolio_by_user(user_id: str):
+    """删除指定用户的持仓数据"""
+    print(f"🗑️  删除用户 '{user_id}' 的持仓数据")
+    print("=" * 50)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查持仓是否存在
+        cursor.execute("SELECT total_asset_value FROM user_portfolios WHERE user_id = ?", (user_id,))
+        portfolio = cursor.fetchone()
+        
+        if not portfolio:
+            print(f"⚠️  用户 '{user_id}' 没有持仓数据")
+            return
+        
+        print(f"💰 总资产: {portfolio['total_asset_value']:,.2f}")
+        
+        # 删除持仓数据
+        cursor.execute("DELETE FROM user_portfolios WHERE user_id = ?", (user_id,))
+        deleted_count = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        if deleted_count > 0:
+            print(f"✅ 成功删除用户 '{user_id}' 的持仓数据")
+        else:
+            print(f"⚠️  未找到用户 '{user_id}' 的持仓数据")
+            
+    except Exception as e:
+        print(f"❌ 删除失败: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Finance Agent 数据库清理工具")
     parser.add_argument("--all", action="store_true", help="清理所有报告数据")
@@ -317,11 +486,15 @@ def main():
     parser.add_argument("--list", action="store_true", help="列出所有报告")
     parser.add_argument("--list-relationships", action="store_true", help="列出所有关联关系")
     parser.add_argument("--report-relationships", type=str, help="查询指定报告的关联关系")
+    parser.add_argument("--list-portfolios", action="store_true", help="列出所有持仓数据")
+    parser.add_argument("--portfolio-detail", type=str, help="查看指定用户的持仓详情")
+    parser.add_argument("--cleanup-portfolio", type=str, help="删除指定用户的持仓数据")
     
     args = parser.parse_args()
     
     # 如果没有任何参数，显示帮助信息
-    if not any([args.all, args.report_id, args.stats, args.list, args.list_relationships, args.report_relationships]):
+    if not any([args.all, args.report_id, args.stats, args.list, args.list_relationships, 
+                args.report_relationships, args.list_portfolios, args.portfolio_detail, args.cleanup_portfolio]):
         parser.print_help()
         return
     
@@ -346,6 +519,12 @@ def main():
     if args.report_relationships:
         list_relationships_by_report(args.report_relationships)
     
+    if args.list_portfolios:
+        list_all_portfolios()
+    
+    if args.portfolio_detail:
+        show_portfolio_detail(args.portfolio_detail)
+    
     if args.all:
         # 确认操作
         confirm = input("\n⚠️  确定要清理所有报告数据吗? (输入 'yes' 确认): ")
@@ -359,6 +538,14 @@ def main():
         confirm = input(f"\n⚠️  确定要清理报告 '{args.report_id}' 吗? (输入 'yes' 确认): ")
         if confirm.lower() == 'yes':
             cleanup_report_by_id(args.report_id)
+        else:
+            print("❌ 操作已取消")
+    
+    if args.cleanup_portfolio:
+        # 确认操作
+        confirm = input(f"\n⚠️  确定要删除用户 '{args.cleanup_portfolio}' 的持仓数据吗? (输入 'yes' 确认): ")
+        if confirm.lower() == 'yes':
+            cleanup_portfolio_by_user(args.cleanup_portfolio)
         else:
             print("❌ 操作已取消")
 

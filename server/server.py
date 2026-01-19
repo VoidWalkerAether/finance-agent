@@ -50,6 +50,7 @@ from server.services import ReportAnalysisService, SearchService
 from server.endpoints import (
     reports as reports_endpoint,
     watchlist as watchlist_endpoint,
+    portfolio as portfolio_endpoint,
     ui_states as ui_states_endpoint,
     actions as actions_endpoint,
     listeners as listeners_endpoint,
@@ -166,6 +167,7 @@ print("✅ Managers initialized successfully")
 
 reports_endpoint.set_dependencies(db_manager, report_service)
 watchlist_endpoint.set_dependencies(db_manager)
+portfolio_endpoint.set_dependencies(db_manager)
 ui_states_endpoint.set_dependencies(ui_state_manager)
 actions_endpoint.set_dependencies(actions_manager)
 listeners_endpoint.set_dependencies(listeners_manager)
@@ -325,6 +327,7 @@ async def websocket_endpoint(websocket: WebSocket):
 # 注册模块化路由
 app.include_router(reports_endpoint.router)
 app.include_router(watchlist_endpoint.router)
+app.include_router(portfolio_endpoint.router)
 app.include_router(ui_states_endpoint.router)
 app.include_router(actions_endpoint.router)
 app.include_router(listeners_endpoint.router)

@@ -312,27 +312,95 @@ class ActionContext:
             def __init__(api_self, db):
                 api_self.db = db
             
-            async def add_holding(
-                api_self,
-                symbol: str,
-                shares: float,
-                cost_basis: float
-            ) -> int:
-                """添加持仓"""
-                # TODO: 实现投资组合功能
-                return 0
+            async def get_portfolio(api_self, user_id: str = 'default') -> Dict[str, Any]:
+                """
+                获取用户持仓数据
+                
+                Args:
+                    user_id: 用户ID
+                    
+                Returns:
+                    持仓数据，如果不存在返回默认值
+                """
+                return await api_self.db.portfolio.get_or_create_default_portfolio(user_id)
             
-            async def get_portfolio(api_self) -> Dict[str, Any]:
-                """获取投资组合"""
-                # TODO: 实现投资组合功能
+            async def update_portfolio(
+                api_self, 
+                portfolio_data: Dict[str, Any],
+                user_id: str = 'default'
+            ) -> None:
+                """
+                更新用户持仓数据
+                
+                Args:
+                    portfolio_data: 持仓数据
+                    user_id: 用户ID
+                    
+                Raises:
+                    ValueError: 如果数据验证失败
+                """
+                await api_self.db.portfolio.upsert_user_portfolio(user_id, portfolio_data)
+            
+            async def delete_portfolio(api_self, user_id: str = 'default') -> bool:
+                """
+                删除用户持仓数据
+                
+                Args:
+                    user_id: 用户ID
+                    
+                Returns:
+                    是否成功删除
+                """
+                return await api_self.db.portfolio.delete_user_portfolio(user_id)
+            
+            async def calculate_summary(api_self, user_id: str = 'default') -> Dict[str, Any]:
+                """
+                计算持仓汇总数据
+                
+                Args:
+                    user_id: 用户ID
+                    
+                Returns:
+                    汇总数据：
+                    - total_value: 总市值
+                    - total_gain: 总盈亏
+                    - allocation_by_category: 按类别分配
+                """
+                portfolio = await api_self.db.portfolio.get_or_create_default_portfolio(user_id)
+                
+                # 计算总市值（包含现金）
+                total_value = portfolio['total_asset_value']
+                
+                # 计算总成本
+                total_cost = portfolio['cash_position']  # 现金不算成本
+                for holding in portfolio.get('holdings', []):
+                    if 'cost_price' in holding and 'quantity' in holding:
+                        if holding['cost_price'] and holding['quantity']:
+                            total_cost += holding['cost_price'] * holding['quantity']
+                
+                # 计算总盈亏
+                total_gain = total_value - total_cost
+                
+                # 按类别统计分配
+                allocation_by_category: Dict[str, float] = {}
+                for holding in portfolio.get('holdings', []):
+                    category = holding.get('category', '未分类')
+                    market_value = holding.get('market_value', 0.0)
+                    allocation_by_category[category] = allocation_by_category.get(category, 0.0) + market_value
+                
+                # 转换为百分比
+                if total_value > 0:
+                    allocation_by_category = {
+                        k: (v / total_value) * 100 
+                        for k, v in allocation_by_category.items()
+                    }
+                
                 return {
-                    'total_value': 0,
-                    'holdings': []
+                    'total_value': total_value,
+                    'total_cost': total_cost,
+                    'total_gain': total_gain,
+                    'total_gain_percentage': (total_gain / total_cost * 100) if total_cost > 0 else 0,
+                    'allocation_by_category': allocation_by_category
                 }
-            
-            async def calculate_allocation(api_self) -> Dict[str, float]:
-                """计算资产配置"""
-                # TODO: 实现投资组合功能
-                return {}
         
         return PortfolioAPI(self.database)

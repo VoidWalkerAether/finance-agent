@@ -222,3 +222,41 @@ FOR EACH ROW
 BEGIN
   UPDATE watchlist SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
+
+-- ============================================================================
+-- 9. 用户持仓表（user_portfolios）
+-- 存储用户的投资组合数据
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS user_portfolios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT DEFAULT 'default' NOT NULL,
+  
+  -- ============ 核心数据字段 ============
+  total_asset_value REAL NOT NULL,         -- 总资产价值
+  cash_position REAL NOT NULL,             -- 现金头寸
+  holdings_json TEXT NOT NULL,             -- 持仓明细（JSON格式）
+  
+  -- ============ 备用扩展字段 ============
+  extra_field_1 TEXT,                      -- 备用字段1（可用于存储额外配置）
+  extra_field_2 TEXT,                      -- 备用字段2
+  extra_field_3 REAL,                      -- 备用数值字段
+  
+  -- ============ 系统字段 ============
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  
+  UNIQUE(user_id)
+);
+
+-- 用户持仓索引
+CREATE INDEX IF NOT EXISTS idx_user_portfolios_user ON user_portfolios(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_portfolios_updated ON user_portfolios(updated_at DESC);
+
+-- 自动更新时间戳
+CREATE TRIGGER IF NOT EXISTS update_user_portfolios_timestamp
+AFTER UPDATE ON user_portfolios
+FOR EACH ROW
+BEGIN
+  UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
