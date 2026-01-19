@@ -248,31 +248,25 @@ class Session:
                         )
                     
                     elif block_type == 'tool_use':
+                        # ⚠️ 工具调用不广播到前端（中间过程，用户不需要看到）
                         tool_name = block.get('name', '')
                         tool_input = block.get('input', {})
                         print(f"  │  🔧 工具调用: {tool_name}")
                         print(f"  │  📝 参数: {json.dumps(tool_input, ensure_ascii=False)[:100]}...")
-                        block_msg = WSToolUseMessage(
-                            type='tool_use',
-                            tool_name=tool_name,
-                            tool_id=block.get('id', ''),
-                            tool_input=tool_input,
-                            session_id=self.id
-                        )
+                        print(f"  │  🚫 [跳过广播] 工具调用不发送到前端")
+                        # 跳过广播，不创建 block_msg
+                        continue
                     
                     elif block_type == 'tool_result':
+                        # ⚠️ 工具结果不广播到前端（中间过程，用户不需要看到）
                         tool_use_id = block.get('tool_use_id', '')
                         is_error = block.get('is_error', False)
                         result_content = str(block.get('content', ''))[:100]
                         print(f"  │  ✅ 工具结果: {tool_use_id[:20]}... (错误={is_error})")
                         print(f"  │  📊 结果: {result_content}...")
-                        block_msg = WSToolResultMessage(
-                            type='tool_result',
-                            tool_use_id=tool_use_id,
-                            content=block.get('content', ''),
-                            is_error=is_error,
-                            session_id=self.id
-                        )
+                        print(f"  │  🚫 [跳过广播] 工具结果不发送到前端")
+                        # 跳过广播，不创建 block_msg
+                        continue
                     
                     if block_msg:
                         await self._broadcast(block_msg.__dict__)
@@ -316,10 +310,17 @@ class Session:
         # 处理用户消息(回显)
         # 对应 TS: else if (message.type === "user")
         elif message.type == "user":
-            print(f"  👤 [Broadcast] 用户消息回显: {message.content[:50]}..." if len(str(message.content)) > 50 else f"  👤 [Broadcast] 用户消息回显: {message.content}")
+            content = str(message.content)
+            
+            # ⚠️ 检查内容是否包含工具对象（防御性编程）
+            if 'ToolResultBlock' in content or 'ToolUseBlock' in content or 'tool_use_id' in content:
+                print(f"  🚫 [Broadcast] UserMessage 包含工具对象信息，跳过广播: {content[:100]}...")
+                return  # 直接返回，不广播
+            
+            print(f"  👤 [Broadcast] 用户消息回显: {content[:50]}..." if len(content) > 50 else f"  👤 [Broadcast] 用户消息回显: {content}")
             ws_message = WSUserMessage(
                 type='user_message',
-                content=message.content,
+                content=content,
                 session_id=self.id
             )
         

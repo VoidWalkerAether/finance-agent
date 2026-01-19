@@ -394,9 +394,21 @@ class AIClient:
                             })
                         # 已经是字典（已转换）
                         elif isinstance(block, dict):
+                            # ⚠️ 检查字典类型，过滤工具相关的块
+                            block_type = block.get('type')
+                            if block_type in ['tool_use', 'tool_result']:
+                                print(f"  🚫 [AIClient] 跳过字典 {block_type} 块，不添加到 content")
+                                continue
                             content_blocks.append(block)
                         # ToolUseBlock, ToolResultBlock 等对象
                         elif hasattr(block, 'type'):
+                            block_type = block.type
+                            
+                            # ⚠️ 过滤工具相关的块，不发送到前端
+                            if block_type in ['tool_use', 'tool_result']:
+                                print(f"  🚫 [AIClient] 跳过 {block_type} 块，不添加到 content")
+                                continue
+                            
                             block_dict = {'type': block.type}
                             
                             # ToolUseBlock 属性
@@ -478,13 +490,36 @@ class AIClient:
                 if isinstance(sdk_msg.content, str):
                     content_text = sdk_msg.content
                 elif isinstance(sdk_msg.content, list) and len(sdk_msg.content) > 0:
-                    first_block = sdk_msg.content[0]
-                    if hasattr(first_block, 'text'):
-                        content_text = first_block.text
-                    elif isinstance(first_block, dict) and 'text' in first_block:
-                        content_text = first_block['text']
-                    else:
-                        content_text = str(first_block)
+                    # ⚠️ 过滤工具相关的块，避免显示 ToolResultBlock
+                    text_blocks = []
+                    for block in sdk_msg.content:
+                        # 检查是否是工具块
+                        if hasattr(block, 'type'):
+                            block_type = block.type
+                            if block_type in ['tool_use', 'tool_result']:
+                                print(f"  🚫 [AIClient] UserMessage 中跳过 {block_type} 块")
+                                continue
+                        elif isinstance(block, dict):
+                            block_type = block.get('type')
+                            if block_type in ['tool_use', 'tool_result']:
+                                print(f"  🚫 [AIClient] UserMessage 中跳过字典 {block_type} 块")
+                                continue
+                        
+                        # 提取文本内容
+                        if hasattr(block, 'text'):
+                            text_blocks.append(block.text)
+                        elif isinstance(block, dict) and 'text' in block:
+                            text_blocks.append(block['text'])
+                        elif isinstance(block, str):
+                            text_blocks.append(block)
+                    
+                    # 合并所有文本块
+                    content_text = '\n'.join(text_blocks) if text_blocks else ''
+                    
+                    # 如果没有提取到任何文本，返回 None（不广播该消息）
+                    if not content_text:
+                        print(f"  🚫 [AIClient] UserMessage 过滤后无内容，跳过")
+                        return None
                 else:
                     content_text = str(sdk_msg.content)
                 

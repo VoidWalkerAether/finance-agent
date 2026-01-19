@@ -152,25 +152,104 @@
             border-radius: 25px;
             font-size: 16px;
         }
+        /* 控制按钮区域 */
+        .control-buttons {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            display: flex;
+            gap: 10px;
+        }
+        .control-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .control-btn:hover {
+            background-color: #218838;
+        }
+        /* 聊天模态窗口 */
+        .chat-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-modal.show {
+            display: flex;
+        }
+        .chat-modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .close-modal {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #aaa;
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+        .close-modal:hover {
+            color: #000;
+        }
+        /* WebSocket控制区域 */
+        .ws-control-section {
+            display: none;
+        }
+        .ws-control-section.show {
+            display: block;
+        }
     </style>
 </head>
 <body>
-    <div class="header">
+    <!-- 左上角控制按钮 -->
+    <div class="control-buttons">
+        <button id="openChatBtn" class="control-btn">💬 打开聊天</button>
+        <button id="toggleWsControlBtn" class="control-btn">🔧 连接控制</button>
+    </div>
+
+    <div class="header" style="margin-top: 60px;">
         <h1>💰 Finance Agent 个人投资助手 功能演示</h1>
         <p>展示WebSocket消息推送和UI组件功能</p>
     </div>
 
-    <!-- 对话框容器 -->
-    <div class="container chat-container">
-        <h2>💬 聊天对话</h2>
-        <div id="chatMessages" class="chat-messages"></div>
-        <div class="chat-input-area">
-            <input type="text" id="chatInput" placeholder="输入消息..." disabled>
-            <button id="sendChatBtn" class="btn" disabled>发送</button>
+    <!-- 聊天模态窗口 -->
+    <div id="chatModal" class="chat-modal">
+        <div class="chat-modal-content">
+            <button class="close-modal" id="closeChatModal">&times;</button>
+            <h2>💬 聊天对话</h2>
+            <div id="chatMessages" class="chat-messages"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="输入消息..." disabled>
+                <button id="sendChatBtn" class="btn" disabled>发送</button>
+            </div>
         </div>
     </div>
 
-    <div class="container">
+    <!-- WebSocket 连接控制（可折叠） -->
+    <div id="wsControlSection" class="container ws-control-section">
         <h2>WebSocket 连接控制</h2>
         <button id="connectBtn" class="btn">连接到服务器</button>
         <button id="disconnectBtn" class="btn" disabled>断开连接</button>
@@ -187,41 +266,55 @@
         </div>
     </div>
 
-    <div class="container">
-        <h2>📊 投资组合仪表盘 (PortfolioDashboard)</h2>
+   <div class="container">
+        <h2>📊 投资组合仪表盘 (Portfolio Dashboard)</h2>
+        <button id="loadPortfolioBtn" class="btn">加载持仓数据</button>
+        <button id="refreshPortfolioBtn" class="btn">刷新</button>
+        
         <div class="dashboard">
             <div class="card">
                 <h3>总资产</h3>
-                <p id="totalValue">¥0.00</p>
+                <p id="totalAssetValue" style="font-size: 24px; font-weight: bold; color: #007bff;">¥0.00</p>
             </div>
             <div class="card">
-                <h3>现金余额</h3>
-                <p id="cashBalance">¥0.00</p>
+                <h3>现金头寸</h3>
+                <p id="cashPosition" style="font-size: 24px; font-weight: bold; color: #28a745;">¥0.00</p>
+                <small id="cashPercentage" style="color: #6c757d;">占比: 0%</small>
             </div>
             <div class="card">
-                <h3>总盈亏</h3>
-                <p id="totalGain">¥0.00</p>
+                <h3>投资市值</h3>
+                <p id="investmentValue" style="font-size: 24px; font-weight: bold; color: #ffc107;">¥0.00</p>
+                <small id="investmentPercentage" style="color: #6c757d;">占比: 0%</small>
             </div>
             <div class="card">
-                <h3>总盈亏率</h3>
-                <p id="totalGainPercent">0.00%</p>
+                <h3>持仓数量</h3>
+                <p id="holdingsCount" style="font-size: 24px; font-weight: bold; color: #17a2b8;">0</p>
             </div>
         </div>
         
-        <h3>持仓详情</h3>
-        <table id="holdingsTable" style="width: 100%; border-collapse: collapse;">
+        <h3>资产配置</h3>
+        <div id="allocationChart" style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+            <p style="color: #6c757d;">暂无数据</p>
+        </div>
+        
+        <h3>持仓明细</h3>
+        <table id="holdingsTable" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
             <thead>
                 <tr style="background-color: #f0f0f0;">
-                    <th style="border: 1px solid #ddd; padding: 8px;">标的</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">数量</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">当前价格</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">当前价值</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">盈亏</th>
-                    <th style="border: 1px solid #ddd; padding: 8px;">盈亏率</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">名称</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">类别</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">市值</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">占比</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">状态</th>
+                    <th style="border: 1px solid #ddd; padding: 8px;">备注</th>
                 </tr>
             </thead>
             <tbody id="holdingsBody">
-                <!-- 持仓数据将在这里显示 -->
+                <tr>
+                    <td colspan="6" style="border: 1px solid #ddd; padding: 15px; text-align: center; color: #6c757d;">
+                        暂无持仓数据，点击"加载持仓数据"按钮获取
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -264,6 +357,7 @@
             constructor() {
                 this.ws = null;
                 this.isConnected = false;
+                this.isNewConversationTurn = false; // 标记是否是新一轮对话
                 
                 this.connectBtn = document.getElementById('connectBtn');
                 this.disconnectBtn = document.getElementById('disconnectBtn');
@@ -282,6 +376,22 @@
                 document.getElementById('refreshReportsBtn').addEventListener('click', () => this.requestReportsList());
                 document.getElementById('healthCheckBtn').addEventListener('click', () => this.checkHealth());
                 
+                // Portfolio 相关按钮
+                document.getElementById('loadPortfolioBtn').addEventListener('click', () => this.loadPortfolio());
+                document.getElementById('refreshPortfolioBtn').addEventListener('click', () => this.loadPortfolio());
+                
+                // 控制按钮
+                document.getElementById('openChatBtn').addEventListener('click', () => this.openChatModal());
+                document.getElementById('closeChatModal').addEventListener('click', () => this.closeChatModal());
+                document.getElementById('toggleWsControlBtn').addEventListener('click', () => this.toggleWsControl());
+                
+                // 点击模态窗口外部关闭
+                document.getElementById('chatModal').addEventListener('click', (e) => {
+                    if (e.target.id === 'chatModal') {
+                        this.closeChatModal();
+                    }
+                });
+                
                 // 聊天输入框事件
                 this.chatInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
@@ -290,6 +400,193 @@
                 });
                 
                 this.sendChatBtn.addEventListener('click', () => this.sendChatMessage());
+            }
+            
+            openChatModal() {
+                document.getElementById('chatModal').classList.add('show');
+                // 如果未连接，自动连接
+                if (!this.isConnected) {
+                    this.connect();
+                }
+            }
+            
+            closeChatModal() {
+                document.getElementById('chatModal').classList.remove('show');
+            }
+            
+            toggleWsControl() {
+                const section = document.getElementById('wsControlSection');
+                section.classList.toggle('show');
+            }
+            
+            async loadPortfolio() {
+                try {
+                    const response = await fetch('http://localhost:3000/api/portfolio?user_id=default');
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        this.updatePortfolioDisplay(result.data);
+                        this.addMessage('持仓数据已加载', 'system');
+                    } else {
+                        this.addMessage(`加载持仓失败: ${result.error || '未知错误'}`, 'error');
+                        alert('加载持仓数据失败: ' + (result.error || '未知错误'));
+                    }
+                } catch (error) {
+                    this.addMessage(`加载持仓错误: ${error.message}`, 'error');
+                    alert('无法连接到服务器: ' + error.message);
+                }
+            }
+            
+            updatePortfolioDisplay(portfolio) {
+                // 更新总资产
+                const totalAsset = portfolio.total_asset_value || 0;
+                const cashPosition = portfolio.cash_position || 0;
+                const holdings = portfolio.holdings || [];
+                
+                // 计算投资市值
+                const investmentValue = totalAsset - cashPosition;
+                
+                // 更新顶部卡片
+                document.getElementById('totalAssetValue').textContent = 
+                    `¥${totalAsset.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                document.getElementById('cashPosition').textContent = 
+                    `¥${cashPosition.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                const cashPercent = totalAsset > 0 ? (cashPosition / totalAsset * 100) : 0;
+                document.getElementById('cashPercentage').textContent = 
+                    `占比: ${cashPercent.toFixed(2)}%`;
+                
+                document.getElementById('investmentValue').textContent = 
+                    `¥${investmentValue.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                const investmentPercent = totalAsset > 0 ? (investmentValue / totalAsset * 100) : 0;
+                document.getElementById('investmentPercentage').textContent = 
+                    `占比: ${investmentPercent.toFixed(2)}%`;
+                
+                document.getElementById('holdingsCount').textContent = holdings.length;
+                
+                // 更新资产配置图表
+                this.updateAllocationChart(portfolio);
+                
+                // 更新持仓明细表
+                this.updateHoldingsTable(holdings);
+            }
+            
+            updateAllocationChart(portfolio) {
+                const container = document.getElementById('allocationChart');
+                const holdings = portfolio.holdings || [];
+                const totalAsset = portfolio.total_asset_value || 0;
+                const cashPosition = portfolio.cash_position || 0;
+                
+                if (totalAsset === 0) {
+                    container.innerHTML = '<p style="color: #6c757d;">暂无数据</p>';
+                    return;
+                }
+                
+                // 按类别统计
+                const categoryMap = {};
+                holdings.forEach(holding => {
+                    const category = holding.category || '未分类';
+                    const value = holding.market_value || 0;
+                    categoryMap[category] = (categoryMap[category] || 0) + value;
+                });
+                
+                // 添加现金
+                if (cashPosition > 0) {
+                    categoryMap['现金'] = cashPosition;
+                }
+                
+                // 生成图表
+                let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                
+                // 按金额排序
+                const sortedCategories = Object.entries(categoryMap)
+                    .sort((a, b) => b[1] - a[1]);
+                
+                sortedCategories.forEach(([category, value]) => {
+                    const percentage = (value / totalAsset * 100).toFixed(2);
+                    const color = this.getCategoryColor(category);
+                    
+                    html += `
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="min-width: 120px; font-weight: 500;">${category}</div>
+                            <div style="flex: 1; background: #e9ecef; border-radius: 4px; height: 24px; position: relative; overflow: hidden;">
+                                <div style="background: ${color}; height: 100%; width: ${percentage}%; transition: width 0.3s ease;"></div>
+                            </div>
+                            <div style="min-width: 80px; text-align: right;">
+                                <strong>${percentage}%</strong>
+                            </div>
+                            <div style="min-width: 100px; text-align: right; color: #6c757d;">
+                                ¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+            }
+            
+            getCategoryColor(category) {
+                const colors = {
+                    '现金': '#28a745',
+                    'A股宽基': '#007bff',
+                    '商品/黄金': '#ffc107',
+                    '港股/跨境': '#17a2b8',
+                    '债券': '#6c757d',
+                    '未分类': '#e9ecef'
+                };
+                return colors[category] || '#6610f2';
+            }
+            
+            updateHoldingsTable(holdings) {
+                const tbody = document.getElementById('holdingsBody');
+                
+                if (!holdings || holdings.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="6" style="border: 1px solid #ddd; padding: 15px; text-align: center; color: #6c757d;">
+                                暂无持仓数据
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                tbody.innerHTML = '';
+                holdings.forEach(holding => {
+                    const row = document.createElement('tr');
+                    
+                    // 根据状态设置行颜色
+                    let statusColor = '#333';
+                    if (holding.status === '盈利中') statusColor = '#28a745';
+                    else if (holding.status === '亏损中') statusColor = '#dc3545';
+                    
+                    row.innerHTML = `
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <strong>${holding.name || 'N/A'}</strong>
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <span style="background: ${this.getCategoryColor(holding.category)}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 12px;">
+                                ${holding.category || 'N/A'}
+                            </span>
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">
+                            <strong>¥${(holding.market_value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">
+                            <strong>${holding.percentage || '0%'}</strong>
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px; color: ${statusColor};">
+                            ${holding.status || '-'}
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px; color: #6c757d; font-size: 12px;">
+                            ${holding.note || '-'}
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
             }
             
             async checkHealth() {
@@ -339,19 +636,8 @@
                     this.chatInput.disabled = false;
                     this.sendChatBtn.disabled = false;
                     
-                    // 发送订阅消息
-                    this.ws.send(JSON.stringify({
-                        type: 'subscribe',
-                        sessionId: 'demo_session_1'
-                    }));
-                    
-                    // 订阅报告分析
-                    this.ws.send(JSON.stringify({
-                        type: 'subscribe_report_analysis',
-                        sessionId: 'demo_session_1'
-                    }));
-                    
-                    // 请求报告列表
+                    // 注意：不需要手动订阅 Session，发送 chat 消息时会自动创建和订阅
+                    // 只请求报告列表即可
                     this.ws.send(JSON.stringify({
                         type: 'request_reports'
                     }));
@@ -426,6 +712,9 @@
                 // 显示用户消息
                 this.addChatMessage(content, 'user');
                 
+                // ⚠️ 标记为新一轮对话（下一个 assistant_message 会创建新消息）
+                this.isNewConversationTurn = true;
+                
                 this.ws.send(JSON.stringify(message));
                 this.chatInput.value = '';
                 this.chatInput.focus();
@@ -458,23 +747,44 @@
                         this.addMessage('服务器连接确认', 'system');
                         break;
                     case 'user_message':
-                        // 用户消息回显
-                        if (message.content) {
-                            this.addChatMessage(message.content, 'user');
-                        }
+                        // 用户消息回显（后端回显，前端已在发送时显示，跳过以避免重复）
+                        // 如果前端没有显示用户消息，可以在这里显示
+                        // this.addChatMessage(message.content, 'user');
                         break;
                     case 'assistant_message':
                         // AI助手消息（流式）
                         if (message.content) {
-                            // 检查是否已有AI消息，如果是流式响应则更新最后一条消息
-                            const assistantMessages = this.chatMessagesDiv.querySelectorAll('.chat-message.assistant-message');
-                            if (assistantMessages.length > 0) {
-                                // 更新最后一条AI消息
-                                const lastMessage = assistantMessages[assistantMessages.length - 1];
-                                lastMessage.textContent = lastMessage.textContent + message.content;
+                            // ⚠️ 严格检查 content 类型，必须是字符串且不为空
+                            if (typeof message.content !== 'string') {
+                                console.warn('⚠️  收到非字符串 content，已过滤:', typeof message.content, message.content);
+                                break;
+                            }
+                            
+                            // ⚠️ 再次检查是否包含对象标识（防御性编程）
+                            const contentStr = String(message.content);
+                            if (contentStr.includes('ToolResultBlock') || 
+                                contentStr.includes('ToolUseBlock') || 
+                                contentStr.includes('tool_use_id')) {
+                                console.warn('⚠️  content 包含工具对象信息，已过滤:', contentStr.substring(0, 100));
+                                break;
+                            }
+                            
+                            // ⚠️ 检查是否是新一轮对话
+                            if (this.isNewConversationTurn) {
+                                // 新一轮对话：创建新的 AI 消息
+                                this.addChatMessage(contentStr, 'assistant');
+                                this.isNewConversationTurn = false; // 重置标志
                             } else {
-                                // 添加新消息
-                                this.addChatMessage(message.content, 'assistant');
+                                // 同一轮对话：追加到最后一条 AI 消息
+                                const assistantMessages = this.chatMessagesDiv.querySelectorAll('.chat-message.assistant-message');
+                                if (assistantMessages.length > 0) {
+                                    // 更新最后一条AI消息（流式追加）
+                                    const lastMessage = assistantMessages[assistantMessages.length - 1];
+                                    lastMessage.textContent = lastMessage.textContent + contentStr;
+                                } else {
+                                    // 没有找到 AI 消息，创建新的（兜底逻辑）
+                                    this.addChatMessage(contentStr, 'assistant');
+                                }
                             }
                         }
                         break;
@@ -502,6 +812,11 @@
                         break;
                     case 'subscribed':
                         this.addMessage(`已订阅会话: ${message.sessionId}`, 'system');
+                        break;
+                    case 'tool_use':
+                    case 'tool_result':
+                        // 🚫 静默忽略工具调用和工具结果消息（中间过程，不展示给用户）
+                        console.log(`[过滤] 忽略 ${message.type} 消息`);
                         break;
                     case 'error':
                         this.addMessage(`错误: ${message.error}`, 'error');
