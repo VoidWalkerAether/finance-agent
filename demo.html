@@ -228,10 +228,12 @@
     <div class="control-buttons">
         <button id="openChatBtn" class="control-btn">💬 打开聊天</button>
         <button id="toggleWsControlBtn" class="control-btn">🔧 连接控制</button>
+        <button id="openPrinciplesBtn" class="control-btn" style="background-color: #6f42c1;">📜 投资原则</button>
+        <button id="openAdviceBtn" class="control-btn" style="background-color: #fd7e14;">💡 投资建议</button>
     </div>
 
     <div class="header" style="margin-top: 60px;">
-        <h1>💰 Finance Agent 个人投资助手 功能演示</h1>
+        <h1>💰 Finance Agent 个人投资助手 </h1>
         <p>展示WebSocket消息推送和UI组件功能</p>
     </div>
 
@@ -244,6 +246,55 @@
             <div class="chat-input-area">
                 <input type="text" id="chatInput" placeholder="输入消息..." disabled>
                 <button id="sendChatBtn" class="btn" disabled>发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 投资原则模态窗口 -->
+    <div id="principlesModal" class="chat-modal">
+        <div class="chat-modal-content">
+            <button class="close-modal" id="closePrinciplesModal">&times;</button>
+            <h2>📜 投资原则管理</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <button id="loadPrinciplesBtn" class="btn">加载原则</button>
+                <button id="editPrinciplesBtn" class="btn" disabled>编辑原则</button>
+                <button id="savePrinciplesBtn" class="btn" disabled style="background-color: #28a745;">保存修改</button>
+            </div>
+            
+            <div id="principlesContent" style="height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+                <p style="color: #6c757d;">请点击“加载原则”按钮加载当前投资原则</p>
+            </div>
+            
+            <div id="principlesEditor" style="display: none; margin-top: 15px;">
+                <h3>编辑模式</h3>
+                <textarea id="principlesTextarea" style="width: 100%; height: 300px; font-family: monospace; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- 投资建议模态窗口 -->
+    <div id="adviceModal" class="chat-modal">
+        <div class="chat-modal-content" style="max-width: 1000px;">
+            <button class="close-modal" id="closeAdviceModal">&times;</button>
+            <h2>💡 投资建议分析</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: bold;">选择报告：</label>
+                <select id="reportSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                    <option value="">请先加载报告列表</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <button id="loadReportsListBtn" class="btn">加载报告列表</button>
+                <button id="generateAdviceBtn" class="btn" style="background-color: #fd7e14;" disabled>生成投资建议</button>
+            </div>
+            
+            <div id="adviceStatus" style="padding: 10px; border-radius: 5px; margin-bottom: 15px; display: none;"></div>
+            
+            <div id="adviceResult" style="max-height: 500px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f8f9fa; border-radius: 8px;">
+                <p style="color: #6c757d;">请选择报告并点击“生成投资建议”</p>
             </div>
         </div>
     </div>
@@ -384,6 +435,10 @@
                 document.getElementById('openChatBtn').addEventListener('click', () => this.openChatModal());
                 document.getElementById('closeChatModal').addEventListener('click', () => this.closeChatModal());
                 document.getElementById('toggleWsControlBtn').addEventListener('click', () => this.toggleWsControl());
+                document.getElementById('openPrinciplesBtn').addEventListener('click', () => this.openPrinciplesModal());
+                document.getElementById('closePrinciplesModal').addEventListener('click', () => this.closePrinciplesModal());
+                document.getElementById('openAdviceBtn').addEventListener('click', () => this.openAdviceModal());
+                document.getElementById('closeAdviceModal').addEventListener('click', () => this.closeAdviceModal());
                 
                 // 点击模态窗口外部关闭
                 document.getElementById('chatModal').addEventListener('click', (e) => {
@@ -400,6 +455,21 @@
                 });
                 
                 this.sendChatBtn.addEventListener('click', () => this.sendChatMessage());
+                
+                // 投资原则按钮
+                document.getElementById('loadPrinciplesBtn').addEventListener('click', () => this.loadPrinciples());
+                document.getElementById('editPrinciplesBtn').addEventListener('click', () => this.editPrinciples());
+                document.getElementById('savePrinciplesBtn').addEventListener('click', () => this.savePrinciples());
+                
+                // 投资建议按钮
+                document.getElementById('loadReportsListBtn').addEventListener('click', () => this.loadReportsList());
+                document.getElementById('generateAdviceBtn').addEventListener('click', () => this.generateAdvice());
+                document.getElementById('reportSelect').addEventListener('change', (e) => {
+                    document.getElementById('generateAdviceBtn').disabled = !e.target.value;
+                });
+                
+                this.currentPrinciples = null; // 存储当前原则
+                this.reportsList = []; // 存储报告列表
             }
             
             openChatModal() {
@@ -417,6 +487,342 @@
             toggleWsControl() {
                 const section = document.getElementById('wsControlSection');
                 section.classList.toggle('show');
+            }
+            
+            // ========== 投资原则功能 ==========
+            
+            openPrinciplesModal() {
+                document.getElementById('principlesModal').classList.add('show');
+            }
+            
+            closePrinciplesModal() {
+                document.getElementById('principlesModal').classList.remove('show');
+            }
+            
+            async loadPrinciples() {
+                try {
+                    const response = await fetch('http://localhost:3000/api/principles?user_id=default');
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        this.currentPrinciples = result.data;
+                        this.displayPrinciples(result.data);
+                        document.getElementById('editPrinciplesBtn').disabled = false;
+                    } else {
+                        alert('加载投资原则失败: ' + (result.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('无法连接到服务器: ' + error.message);
+                }
+            }
+            
+            displayPrinciples(principles) {
+                const container = document.getElementById('principlesContent');
+                const wm = principles.weight_management;
+                const dc = principles.drawdown_control;
+                
+                let html = `
+                    <h3>📝 投资原则档案</h3>
+                    <p><strong>档案名称：</strong> ${principles.profile_name}</p>
+                    <p><strong>版本：</strong> ${principles.version}</p>
+                    <p><strong>更新时间：</strong> ${principles.last_updated}</p>
+                    
+                    <hr style="margin: 20px 0;">
+                    
+                    <h3>📊 仓位权重管理</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+                        <tr style="background-color: #f0f0f0;">
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">规则</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">数值</th>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">单一品种初始权重</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(wm.single_position_initial * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">单一品种常规上限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(wm.single_position_max_normal * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">单一品种极限上限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong style="color: #dc3545;">${(wm.single_position_max_extreme * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">持仓数量目标下限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${wm.target_position_count_min}</strong> 个</td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">持仓数量目标上限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${wm.target_position_count_max}</strong> 个</td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">现金占比目标上限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(wm.target_cash_ratio_max * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                    </table>
+                    
+                    <hr style="margin: 20px 0;">
+                    
+                    <h3>🛡️ 回撤止损纪律</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+                        <tr style="background-color: #f0f0f0;">
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">规则</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">数值</th>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">单个股票止损线 (均值)</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong style="color: #dc3545;">${(dc.single_stock_stop_loss_avg * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">组合NAV阶梯触发阈值</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(dc.portfolio_nav_step_trigger * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">每步减仓比例</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(dc.portfolio_reduce_ratio_per_step * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ddd; padding: 8px;">年度NAV调整上限</td>
+                            <td style="border: 1px solid #ddd; padding: 8px;"><strong>${(dc.annual_nav_adjustment_max * 100).toFixed(1)}%</strong></td>
+                        </tr>
+                    </table>
+                `;
+                
+                container.innerHTML = html;
+            }
+            
+            editPrinciples() {
+                if (!this.currentPrinciples) {
+                    alert('请先加载投资原则');
+                    return;
+                }
+                
+                // 显示编辑器，隐藏显示区
+                document.getElementById('principlesContent').style.display = 'none';
+                document.getElementById('principlesEditor').style.display = 'block';
+                document.getElementById('principlesTextarea').value = JSON.stringify(this.currentPrinciples, null, 2);
+                document.getElementById('savePrinciplesBtn').disabled = false;
+                document.getElementById('editPrinciplesBtn').disabled = true;
+            }
+            
+            async savePrinciples() {
+                try {
+                    const text = document.getElementById('principlesTextarea').value;
+                    const principles = JSON.parse(text);
+                    
+                    const response = await fetch('http://localhost:3000/api/principles', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: 'default',
+                            principles: principles,
+                            is_active: true
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        alert('投资原则保存成功！');
+                        this.currentPrinciples = principles;
+                        
+                        // 退出编辑模式
+                        document.getElementById('principlesEditor').style.display = 'none';
+                        document.getElementById('principlesContent').style.display = 'block';
+                        document.getElementById('savePrinciplesBtn').disabled = true;
+                        document.getElementById('editPrinciplesBtn').disabled = false;
+                        
+                        // 重新显示
+                        this.displayPrinciples(principles);
+                    } else {
+                        alert('保存失败: ' + (result.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('保存失败: ' + error.message);
+                }
+            }
+            
+            // ========== 投资建议功能 ==========
+            
+            openAdviceModal() {
+                document.getElementById('adviceModal').classList.add('show');
+            }
+            
+            closeAdviceModal() {
+                document.getElementById('adviceModal').classList.remove('show');
+            }
+            
+            async loadReportsList() {
+                try {
+                    // 从 API 获取报告列表
+                    const response = await fetch('http://localhost:3000/api/reports');
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        this.reportsList = result.data;
+                        const select = document.getElementById('reportSelect');
+                        select.innerHTML = '<option value="">请选择报告</option>';
+                        
+                        result.data.forEach(report => {
+                            const option = document.createElement('option');
+                            option.value = report.report_id;
+                            option.textContent = `${report.title || report.report_id} (${report.date_published || 'N/A'})`;
+                            select.appendChild(option);
+                        });
+                        
+                        alert(`加载成功，共 ${result.data.length} 份报告`);
+                    } else {
+                        alert('加载报告列表失败: ' + (result.error || '未知错误'));
+                    }
+                } catch (error) {
+                    alert('无法连接到服务器: ' + error.message);
+                }
+            }
+            
+            async generateAdvice() {
+                const reportId = document.getElementById('reportSelect').value;
+                if (!reportId) {
+                    alert('请选择一份报告');
+                    return;
+                }
+                
+                const statusDiv = document.getElementById('adviceStatus');
+                const resultDiv = document.getElementById('adviceResult');
+                
+                // 显示加载中
+                statusDiv.style.display = 'block';
+                statusDiv.style.backgroundColor = '#cce7ff';
+                statusDiv.innerHTML = '🔄 正在生成投资建议，请稍候...';
+                resultDiv.innerHTML = '<p style="color: #6c757d;">🔄 分析中...</p>';
+                
+                document.getElementById('generateAdviceBtn').disabled = true;
+                
+                try {
+                    const response = await fetch('http://localhost:3000/api/portfolio/advice', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            user_id: 'default',
+                            report_id: reportId
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success && result.data) {
+                        statusDiv.style.backgroundColor = '#d4edda';
+                        statusDiv.innerHTML = '✅ 投资建议生成成功！';
+                        this.displayAdvice(result.data);
+                    } else {
+                        statusDiv.style.backgroundColor = '#f8d7da';
+                        statusDiv.innerHTML = `❌ 生成失败: ${result.error || '未知错误'}`;
+                        resultDiv.innerHTML = `<p style="color: #dc3545;">错误: ${result.error || '未知错误'}</p>`;
+                    }
+                } catch (error) {
+                    statusDiv.style.backgroundColor = '#f8d7da';
+                    statusDiv.innerHTML = `❌ 请求失败: ${error.message}`;
+                    resultDiv.innerHTML = `<p style="color: #dc3545;">无法连接到服务器: ${error.message}</p>`;
+                } finally {
+                    document.getElementById('generateAdviceBtn').disabled = false;
+                }
+            }
+            
+            displayAdvice(advice) {
+                const resultDiv = document.getElementById('adviceResult');
+                
+                let html = '<div style="font-size: 14px;">';
+                
+                // 整体仓位调整
+                if (advice.rebalancing) {
+                    html += `
+                        <h3>📈 整体仓位调整</h3>
+                        <p><strong>当前偏差：</strong> ${advice.rebalancing.current_deviation || 'N/A'}</p>
+                    `;
+                    
+                    if (advice.rebalancing.suggestions && advice.rebalancing.suggestions.length > 0) {
+                        html += '<h4>调整建议：</h4><ul>';
+                        advice.rebalancing.suggestions.forEach(sug => {
+                            const actionColor = sug.action === 'increase' ? '#28a745' : sug.action === 'decrease' ? '#dc3545' : '#6c757d';
+                            html += `
+                                <li style="margin: 10px 0;">
+                                    <strong style="color: ${actionColor};">${sug.asset_class}</strong>: ${sug.action.toUpperCase()}<br>
+                                    从 <strong>${(sug.from * 100).toFixed(1)}%</strong> → 
+                                    <strong>${sug.to_range ? `${(sug.to_range[0] * 100).toFixed(0)}%-${(sug.to_range[1] * 100).toFixed(0)}%` : 'N/A'}</strong><br>
+                                    <small>理由：${sug.reason || 'N/A'}</small>
+                                </li>
+                            `;
+                        });
+                        html += '</ul>';
+                    }
+                }
+                
+                html += '<hr>';
+                
+                // 标的操作清单
+                if (advice.actions && advice.actions.length > 0) {
+                    html += '<h3>🎯 标的操作清单</h3>';
+                    advice.actions.forEach(action => {
+                        const priorityIcon = action.priority === 'high' ? '🔴' : action.priority === 'medium' ? '🟡' : '🟢';
+                        const adviceColor = action.advice === 'buy' ? '#28a745' : action.advice === 'sell' ? '#dc3545' : '#007bff';
+                        
+                        html += `
+                            <div style="border: 1px solid #ddd; padding: 10px; margin: 10px 0; border-radius: 5px; background-color: #f8f9fa;">
+                                ${priorityIcon} <strong style="color: ${adviceColor};">${action.name}</strong> - ${action.advice.toUpperCase()}<br>
+                                <small>当前状态：${action.current_status || 'N/A'}</small><br>
+                                <small>理由：${action.reason || 'N/A'}</small>
+                            </div>
+                        `;
+                    });
+                }
+                
+                html += '<hr>';
+                
+                // 时机与风险
+                if (advice.timing_and_risks) {
+                    html += '<h3>⏰ 时机与风险</h3>';
+                    
+                    if (advice.timing_and_risks.timing && advice.timing_and_risks.timing.length > 0) {
+                        html += '<h4>📅 时机建议：</h4><ul>';
+                        advice.timing_and_risks.timing.forEach(t => {
+                            html += `<li>${t}</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    if (advice.timing_and_risks.risks && advice.timing_and_risks.risks.length > 0) {
+                        html += '<h4>⚠️ 风险提示：</h4><ul>';
+                        advice.timing_and_risks.risks.forEach(r => {
+                            html += `<li style="color: #dc3545;">${r}</li>`;
+                        });
+                        html += '</ul>';
+                    }
+                    
+                    if (advice.timing_and_risks.liquidity) {
+                        html += `<p><strong>流动性建议：</strong> ${advice.timing_and_risks.liquidity}</p>`;
+                    }
+                }
+                
+                html += '<hr>';
+                
+                // 原则检查
+                if (advice.constraints_check && advice.constraints_check.length > 0) {
+                    html += '<h3>🛡️ 原则检查</h3><ul>';
+                    advice.constraints_check.forEach(check => {
+                        const statusIcon = check.status === 'satisfied' ? '✅' : check.status === 'violated' ? '🔴' : '🟡';
+                        const statusColor = check.status === 'satisfied' ? '#28a745' : check.status === 'violated' ? '#dc3545' : '#ffc107';
+                        
+                        html += `
+                            <li style="margin: 5px 0;">
+                                ${statusIcon} <strong style="color: ${statusColor};">${check.rule || 'N/A'}</strong><br>
+                                <small>${check.details || 'N/A'}</small>
+                            </li>
+                        `;
+                    });
+                    html += '</ul>';
+                }
+                
+                html += '</div>';
+                resultDiv.innerHTML = html;
             }
             
             async loadPortfolio() {

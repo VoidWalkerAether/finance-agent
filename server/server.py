@@ -51,6 +51,7 @@ from server.endpoints import (
     reports as reports_endpoint,
     watchlist as watchlist_endpoint,
     portfolio as portfolio_endpoint,
+    principles as principles_endpoint,
     ui_states as ui_states_endpoint,
     actions as actions_endpoint,
     listeners as listeners_endpoint,
@@ -168,6 +169,7 @@ print("✅ Managers initialized successfully")
 reports_endpoint.set_dependencies(db_manager, report_service)
 watchlist_endpoint.set_dependencies(db_manager)
 portfolio_endpoint.set_dependencies(db_manager)
+principles_endpoint.set_dependencies(db_manager)
 ui_states_endpoint.set_dependencies(ui_state_manager)
 actions_endpoint.set_dependencies(actions_manager)
 listeners_endpoint.set_dependencies(listeners_manager)
@@ -328,6 +330,7 @@ async def websocket_endpoint(websocket: WebSocket):
 app.include_router(reports_endpoint.router)
 app.include_router(watchlist_endpoint.router)
 app.include_router(portfolio_endpoint.router)
+app.include_router(principles_endpoint.router)
 app.include_router(ui_states_endpoint.router)
 app.include_router(actions_endpoint.router)
 app.include_router(listeners_endpoint.router)

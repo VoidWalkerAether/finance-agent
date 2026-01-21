@@ -260,3 +260,38 @@ FOR EACH ROW
 BEGIN
   UPDATE user_portfolios SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;
+
+-- ============================================================================
+-- 10. 用户投资原则表（user_investment_principles）
+-- 存储用户的投资原则配置（支持多套档案）
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS user_investment_principles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL DEFAULT 'default',
+  profile_name TEXT NOT NULL,                 -- 原则档案名称（如："fenghe_style_core"）
+  
+  -- ============ 核心数据字段 ============
+  principles_json TEXT NOT NULL,              -- 完整的投资原则 JSON
+  version TEXT,                               -- 版本号
+  is_active INTEGER DEFAULT 1,                -- 是否激活（1=激活，0=未激活）
+  
+  -- ============ 系统字段 ============
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  
+  UNIQUE(user_id, profile_name)
+);
+
+-- 用户投资原则索引
+CREATE INDEX IF NOT EXISTS idx_principles_user_active ON user_investment_principles(user_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_principles_user_profile ON user_investment_principles(user_id, profile_name);
+CREATE INDEX IF NOT EXISTS idx_principles_updated ON user_investment_principles(updated_at DESC);
+
+-- 自动更新时间戳
+CREATE TRIGGER IF NOT EXISTS update_principles_timestamp
+AFTER UPDATE ON user_investment_principles
+FOR EACH ROW
+BEGIN
+  UPDATE user_investment_principles SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;

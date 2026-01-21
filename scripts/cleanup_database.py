@@ -12,6 +12,9 @@ Finance Agent 数据库管理脚本
 7. 列出所有持仓数据
 8. 查看指定用户持仓详情
 9. 删除指定用户持仓数据
+10. 列出所有投资原则档案
+11. 查看指定用户的投资原则详情
+12. 删除指定用户的投资原则数据
 
 使用方法：
 python cleanup_database.py [options]
@@ -26,6 +29,9 @@ python cleanup_database.py [options]
 --list-portfolios: 列出所有持仓数据
 --portfolio-detail USER_ID: 查看指定用户的持仓详情
 --cleanup-portfolio USER_ID: 删除指定用户的持仓数据
+--list-principles: 列出所有投资原则档案
+--principles-detail USER_ID: 查看指定用户的投资原则详情
+--cleanup-principles USER_ID: 删除指定用户的投资原则数据
 """
 
 import argparse
@@ -115,6 +121,11 @@ def show_stats():
         portfolios_count = cursor.fetchone()['count']
         print(f"💼 持仓用户数: {portfolios_count}")
         
+        # 投资原则档案数
+        cursor.execute("SELECT COUNT(*) as count FROM user_investment_principles")
+        principles_count = cursor.fetchone()['count']
+        print(f"📊 投资原则档案数: {principles_count}")
+        
         conn.close()
         
     except Exception as e:
@@ -149,6 +160,10 @@ def cleanup_all_reports():
         cursor.execute("DELETE FROM user_portfolios")
         portfolios_count = cursor.rowcount
         
+        # 清理投资原则数据
+        cursor.execute("DELETE FROM user_investment_principles")
+        principles_count = cursor.rowcount
+        
         conn.commit()
         conn.close()
         
@@ -158,6 +173,7 @@ def cleanup_all_reports():
         print(f"   • 组件实例: {component_count} 条")
         print(f"   • 关注列表: {watchlist_count} 条")
         print(f"   • 持仓数据: {portfolios_count} 条")
+        print(f"   • 投资原则: {principles_count} 条")
         print(f"\n🎉 所有数据已清理完成!")
         
     except Exception as e:
@@ -478,6 +494,154 @@ def cleanup_portfolio_by_user(user_id: str):
     except Exception as e:
         print(f"❌ 删除失败: {e}")
 
+
+def list_all_principles():
+    """列出所有投资原则档案"""
+    print("📊 所有投资原则档案列表")
+    print("=" * 100)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id, profile_name, version, is_active, 
+                   created_at, updated_at
+            FROM user_investment_principles
+            ORDER BY user_id, is_active DESC, updated_at DESC
+        """)
+        
+        principles_list = cursor.fetchall()
+        
+        if not principles_list:
+            print("📭 暂无投资原则数据")
+            return
+        
+        print(f"{'用户ID':<15} {'档案名称':<30} {'版本':<8} {'状态':<8} {'更新时间':<20}")
+        print("-" * 100)
+        
+        for principle in principles_list:
+            status = "✅ 激活" if principle['is_active'] else "⏸️  未激活"
+            print(f"{principle['user_id']:<15} "
+                  f"{principle['profile_name']:<30} "
+                  f"{principle['version'] or 'N/A':<8} "
+                  f"{status:<8} "
+                  f"{principle['updated_at']:<20}")
+        
+        print(f"\n📈 总计: {len(principles_list)} 个档案")
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ 获取投资原则列表失败: {e}")
+
+
+def show_principles_detail(user_id: str):
+    """显示指定用户的投资原则详情"""
+    print(f"📊 用户 '{user_id}' 的投资原则详情")
+    print("=" * 100)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id, profile_name, principles_json, version, is_active,
+                   created_at, updated_at
+            FROM user_investment_principles
+            WHERE user_id = ?
+            ORDER BY is_active DESC, updated_at DESC
+        """, (user_id,))
+        
+        principles_list = cursor.fetchall()
+        
+        if not principles_list:
+            print(f"⚠️  用户 '{user_id}' 没有投资原则数据")
+            return
+        
+        # 显示每个档案
+        for idx, principle in enumerate(principles_list, 1):
+            status_icon = "✅" if principle['is_active'] else "⏸️"
+            print(f"\n{status_icon} 档案 {idx}: {principle['profile_name']}")
+            print("-" * 100)
+            print(f"   版本: {principle['version'] or 'N/A'}")
+            print(f"   状态: {'激活' if principle['is_active'] else '未激活'}")
+            print(f"   创建时间: {principle['created_at']}")
+            print(f"   更新时间: {principle['updated_at']}")
+            
+            # 解析原则内容
+            import json
+            try:
+                principles_data = json.loads(principle['principles_json'])
+                
+                # 显示仓位管理规则
+                wm = principles_data.get('weight_management', {})
+                if wm:
+                    print(f"\n   📊 仓位权重管理:")
+                    print(f"      • 单一品种初始权重: {wm.get('single_position_initial', 0)*100:.1f}%")
+                    print(f"      • 单一品种常规上限: {wm.get('single_position_max_normal', 0)*100:.1f}%")
+                    print(f"      • 单一品种极限上限: {wm.get('single_position_max_extreme', 0)*100:.1f}%")
+                    print(f"      • 极限条件: {wm.get('extreme_condition', 'N/A')}")
+                    print(f"      • 目标持仓数量: {wm.get('target_position_count_min', 0)}-{wm.get('target_position_count_max', 0)} 个")
+                    print(f"      • 跨市场数量: {wm.get('target_market_count_min', 0)}-{wm.get('target_market_count_max', 0)} 个")
+                    
+                    three_low = wm.get('three_low_principle', {})
+                    if three_low:
+                        print(f"      • 三低原则: 低杠杆={three_low.get('low_leverage', False)}, "
+                              f"低相关={three_low.get('low_correlation', False)}, "
+                              f"低集中度={three_low.get('low_concentration', False)}")
+                
+                # 显示回撤止损规则
+                dc = principles_data.get('drawdown_control', {})
+                if dc:
+                    print(f"\n   ⚠️  回撤止损纪律:")
+                    print(f"      • 个股平均止损: {dc.get('single_stock_stop_loss_avg', 0)*100:.1f}%")
+                    print(f"      • NAV 回调触发阈值: {dc.get('portfolio_nav_step_trigger', 0)*100:.1f}%")
+                    print(f"      • 每次减仓比例: {dc.get('portfolio_reduce_ratio_per_step', 0)*100:.0f}%")
+                    print(f"      • 年度净值调整上限: {dc.get('annual_nav_adjustment_max', 0)*100:.0f}%")
+                
+            except json.JSONDecodeError as e:
+                print(f"\n   ❌ 解析原则数据失败: {e}")
+        
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ 获取投资原则详情失败: {e}")
+
+
+def cleanup_principles_by_user(user_id: str):
+    """删除指定用户的投资原则数据"""
+    print(f"🗑️  删除用户 '{user_id}' 的投资原则数据")
+    print("=" * 50)
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # 检查原则是否存在
+        cursor.execute("SELECT COUNT(*) as count FROM user_investment_principles WHERE user_id = ?", (user_id,))
+        count = cursor.fetchone()['count']
+        
+        if count == 0:
+            print(f"⚠️  用户 '{user_id}' 没有投资原则数据")
+            return
+        
+        print(f"📁 找到 {count} 个档案")
+        
+        # 删除原则数据
+        cursor.execute("DELETE FROM user_investment_principles WHERE user_id = ?", (user_id,))
+        deleted_count = cursor.rowcount
+        
+        conn.commit()
+        conn.close()
+        
+        if deleted_count > 0:
+            print(f"✅ 成功删除用户 '{user_id}' 的 {deleted_count} 个投资原则档案")
+        else:
+            print(f"⚠️  未找到用户 '{user_id}' 的投资原则数据")
+            
+    except Exception as e:
+        print(f"❌ 删除失败: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Finance Agent 数据库清理工具")
     parser.add_argument("--all", action="store_true", help="清理所有报告数据")
@@ -489,12 +653,16 @@ def main():
     parser.add_argument("--list-portfolios", action="store_true", help="列出所有持仓数据")
     parser.add_argument("--portfolio-detail", type=str, help="查看指定用户的持仓详情")
     parser.add_argument("--cleanup-portfolio", type=str, help="删除指定用户的持仓数据")
+    parser.add_argument("--list-principles", action="store_true", help="列出所有投资原则档案")
+    parser.add_argument("--principles-detail", type=str, help="查看指定用户的投资原则详情")
+    parser.add_argument("--cleanup-principles", type=str, help="删除指定用户的投资原则数据")
     
     args = parser.parse_args()
     
     # 如果没有任何参数，显示帮助信息
     if not any([args.all, args.report_id, args.stats, args.list, args.list_relationships, 
-                args.report_relationships, args.list_portfolios, args.portfolio_detail, args.cleanup_portfolio]):
+                args.report_relationships, args.list_portfolios, args.portfolio_detail, args.cleanup_portfolio,
+                args.list_principles, args.principles_detail, args.cleanup_principles]):
         parser.print_help()
         return
     
@@ -525,6 +693,12 @@ def main():
     if args.portfolio_detail:
         show_portfolio_detail(args.portfolio_detail)
     
+    if args.list_principles:
+        list_all_principles()
+    
+    if args.principles_detail:
+        show_principles_detail(args.principles_detail)
+    
     if args.all:
         # 确认操作
         confirm = input("\n⚠️  确定要清理所有报告数据吗? (输入 'yes' 确认): ")
@@ -546,6 +720,14 @@ def main():
         confirm = input(f"\n⚠️  确定要删除用户 '{args.cleanup_portfolio}' 的持仓数据吗? (输入 'yes' 确认): ")
         if confirm.lower() == 'yes':
             cleanup_portfolio_by_user(args.cleanup_portfolio)
+        else:
+            print("❌ 操作已取消")
+    
+    if args.cleanup_principles:
+        # 确认操作
+        confirm = input(f"\n⚠️  确定要删除用户 '{args.cleanup_principles}' 的投资原则数据吗? (输入 'yes' 确认): ")
+        if confirm.lower() == 'yes':
+            cleanup_principles_by_user(args.cleanup_principles)
         else:
             print("❌ 操作已取消")
 

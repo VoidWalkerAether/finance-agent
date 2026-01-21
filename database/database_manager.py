@@ -23,7 +23,7 @@ from pathlib import Path
 from datetime import datetime
 
 # 导入 Repository 层
-from .repositories import WatchlistRepository, PortfolioRepository
+from .repositories import WatchlistRepository, PortfolioRepository, PrinciplesRepository
 
 
 class DatabaseManager:
@@ -59,6 +59,7 @@ class DatabaseManager:
         # 初始化 Repository 层
         self._watchlist_repo = WatchlistRepository(db_path)
         self._portfolio_repo = PortfolioRepository(db_path)
+        self._principles_repo = PrinciplesRepository(db_path)
         
         # 新增：ChromaDB 初始化（受环境变量控制）
         use_chromadb = os.getenv('USE_CHROMADB', 'false').lower() == 'true'
@@ -1138,6 +1139,25 @@ class DatabaseManager:
                 results.append(result)
             
             return results
+    
+    # ============================================================================
+    # Repository 属性 (Property 访问层)
+    # ============================================================================
+    
+    @property
+    def watchlist(self) -> WatchlistRepository:
+        """获取 Watchlist Repository"""
+        return self._watchlist_repo
+    
+    @property
+    def portfolio(self) -> PortfolioRepository:
+        """获取 Portfolio Repository"""
+        return self._portfolio_repo
+    
+    @property
+    def principles(self) -> PrinciplesRepository:
+        """获取 Principles Repository"""
+        return self._principles_repo
 
 
 # ============================================================================

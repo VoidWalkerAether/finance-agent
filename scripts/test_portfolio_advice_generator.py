@@ -7,7 +7,19 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+import os
 
+
+# 添加项目路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# 加载环境变量
+from dotenv import load_dotenv
+load_dotenv()
+
+if not os.getenv('ANTHROPIC_AUTH_TOKEN'):
+    print("❌ 请先配置 .env 文件中的 ANTHROPIC_AUTH_TOKEN")
+    sys.exit(1)
 # 添加项目路径
 sys.path.append(str(Path(__file__).parent.parent))
 
@@ -27,34 +39,42 @@ async def main():
     print("\n【1/4】加载用户持仓...")
     portfolio = await db.portfolio.get_or_create_default_portfolio('default')
     
-    # 如果没有持仓数据，创建测试数据
-    if portfolio['total_asset_value'] == 0:
-        print("   ⚠️ 未找到持仓数据，创建测试数据...")
-        portfolio = {
-            'total_asset_value': 1000000,
-            'cash_position': 50000,
-            'holdings': [
-                {
-                    'name': '沪深300 ETF',
-                    'category': 'A股宽基',
-                    'market_value': 500000,
-                    'percentage': '50%'
-                },
-                {
-                    'name': 'SGE黄金9999 ETF',
-                    'category': '商品/黄金',
-                    'market_value': 100000,
-                    'percentage': '10%'
-                },
-                {
-                    'name': '恒生互联网科技业ETF',
-                    'category': '港股/跨境',
-                    'market_value': 0,
-                    'percentage': '0%',
-                    'note': '关注但未买入'
-                }
-            ]
-        }
+    # 打印从数据库加载的原始数据
+    print(f"   💾 数据库中的持仓数据：")
+    print(f"      总资产: {portfolio['total_asset_value']:,.0f} 元")
+    print(f"      现金: {portfolio['cash_position']:,.0f} 元")
+    print(f"      持仓明细: {len(portfolio['holdings'])} 个")
+    for h in portfolio['holdings']:
+        if h['market_value'] > 0:
+            print(f"        - {h['name']}: {h['percentage']}")
+    
+    # 强制使用测试数据（确保测试可控）
+    print("\n   ⚠️  强制使用测试数据（覆盖数据库）...")
+    portfolio = {
+        'total_asset_value': 1000000,
+        'cash_position': 40000,
+        'holdings': [
+            {
+                'name': '沪深300 ETF',
+                'category': 'A股宽基',
+                'market_value': 500000,
+                'percentage': '50%'
+            },
+            {
+                'name': 'SGE黄金9999 ETF',
+                'category': '商品/黄金',
+                'market_value': 100000,
+                'percentage': '10%'
+            },
+            {
+                'name': '恒生互联网科技业ETF',
+                'category': '港股/跨境',
+                'market_value': 0,
+                'percentage': '0%',
+                'note': '关注但未买入'
+            }
+        ]
+    }
     
     print(f"   ✅ 持仓加载完成")
     print(f"      总资产: {portfolio['total_asset_value']:,.0f} 元")

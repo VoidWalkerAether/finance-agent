@@ -8,6 +8,10 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 import sys
 
+# 强制无缓冲输出（确保 print 日志立即显示）
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 # 添加项目路径
 sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
@@ -18,16 +22,8 @@ from database.schemas import (
     principles_to_readable_text
 )
 
-# 导入 AI 客户端
-try:
-    from claude_agent_sdk import (
-        AssistantMessage,
-        TextBlock,
-        query
-    )
-except ImportError:
-    print("⚠️ 请先安装依赖: pip install claude-agent-sdk")
-    raise
+# 导入 AIClient（正确的调用方式）
+from ccsdk.ai_client import AIClient, AIQueryOptions
 
 
 # ============================================================================
@@ -123,7 +119,11 @@ def build_system_prompt() -> str:
 - 当实际持仓与报告建议或客户原则冲突时，明确点出冲突并给出调整建议
 - 所有仓位调整建议必须遵守客户的投资原则约束
 
-输出格式必须是有效的 JSON，不要使用 Markdown 代码块包裹。"""
+重要：JSON 格式要求：
+1. 输出格式必须是有效的 JSON，不要使用 Markdown 代码块包裹
+2. 字符串中如果包含双引号，必须转义为 \" （例如：\"十五五\"）
+3. 避免使用行内注释（//）
+4. 确保所有字符串正确闭合"""
 
 
 def build_user_prompt(
@@ -262,7 +262,22 @@ def build_user_prompt(
         '}'
     ])
     
-    return "\n".join(parts)
+    final_prompt = "\n".join(parts)
+    
+    # 打印最终发送给 LLM 的 Prompt
+    print("\n" + "=" * 80, flush=True)
+    print("📝 [最终 Prompt] 即将发送给 LLM 的完整内容：", flush=True)
+    print("=" * 80, flush=True)
+    print(final_prompt, flush=True)
+    print("=" * 80, flush=True)
+    print(f"📊 Prompt 统计：", flush=True)
+    print(f"   - 总字符数: {len(final_prompt)}", flush=True)
+    print(f"   - 总行数: {len(final_prompt.split(chr(10)))}", flush=True)
+    print(f"   - 持仓数据：总资产 {portfolio['total_asset_value']:,.0f} 元，现金 {portfolio['cash_position']:,.0f} 元", flush=True)
+    print(f"   - 持仓明细数: {len([h for h in portfolio['holdings'] if h['market_value'] > 0])} 个", flush=True)
+    print("=" * 80 + "\n", flush=True)
+    
+    return final_prompt
 
 
 # ============================================================================
@@ -280,18 +295,46 @@ async def call_ai_for_advice(system_prompt: str, user_prompt: str) -> Dict[str, 
     Returns:
         建议 JSON
     """
-    messages = [
-        AssistantMessage(role="user", content=[TextBlock(text=system_prompt + "\n\n" + user_prompt)])
-    ]
-    
     try:
-        resp = await query(messages)
+        # 使用 AIClient.query_single() 方法（参考 ai_client.py:540-576）
+        client = AIClient(
+            options=AIQueryOptions(
+                system_prompt=system_prompt,
+                max_turns=10  # 投资建议生成不需要多轮对话
+            )
+        )
         
-        # 提取文本内容
-        if hasattr(resp, 'content') and len(resp.content) > 0:
-            text_content = resp.content[0].text
-        else:
-            text_content = str(resp)
+        # 调用 query_single
+        result = await client.query_single(user_prompt)
+        
+        # 提取 assistant 消息的文本内容
+        text_content = ""
+        for message in result['messages']:
+            if message.type == "assistant":
+                # content 可能是字符串或列表
+                if isinstance(message.content, str):
+                    text_content += message.content
+                elif isinstance(message.content, list):
+                    for block in message.content:
+                        if isinstance(block, dict) and block.get('type') == 'text':
+                            text_content += block.get('text', '')
+        
+        if not text_content:
+            return {
+                'error': 'LLM 未返回有效内容',
+                'raw_response': str(result)
+            }
+        
+        # 打印完整的原始响应（调试用）
+        print("\n" + "=" * 80, flush=True)
+        print("📥 [LLM 原始响应] 完整内容：", flush=True)
+        print("=" * 80, flush=True)
+        print(text_content, flush=True)
+        print("=" * 80, flush=True)
+        print(f"📊 响应统计：", flush=True)
+        print(f"   - 字符数: {len(text_content)}", flush=True)
+        print(f"   - 行数: {len(text_content.split(chr(10)))}", flush=True)
+        print("=" * 80 + "\n", flush=True)
         
         # 尝试解析 JSON
         # 如果模型返回了 markdown 代码块，先去除
@@ -300,19 +343,110 @@ async def call_ai_for_advice(system_prompt: str, user_prompt: str) -> Dict[str, 
             # 去除开头的 ```json 或 ```
             lines = text_content.split('\n')
             text_content = '\n'.join(lines[1:-1]) if len(lines) > 2 else text_content
+            # 去除结尾的 ```
+            if text_content.endswith('```'):
+                text_content = text_content[:-3].strip()
         
-        advice = json.loads(text_content)
-        return advice
+        # 保存原始 JSON 用于调试
+        json_for_debug = text_content
+        
+        try:
+            advice = json.loads(text_content)
+            print("✅ JSON 解析成功", flush=True)
+            return advice
+        except json.JSONDecodeError as parse_error:
+            # JSON 解析失败，尝试修复常见问题
+            print(f"⚠️ 首次 JSON 解析失败: {parse_error}", flush=True)
+            print(f"   错误位置: line {parse_error.lineno}, column {parse_error.colno}", flush=True)
+            
+            # 修复策略 1: 移除行尾注释
+            lines = text_content.split('\n')
+            cleaned_lines = []
+            for line in lines:
+                # 移除行尾注释（但保留字符串内的 //）
+                if '//' in line and '"' not in line.split('//')[0]:
+                    line = line.split('//')[0]
+                cleaned_lines.append(line)
+            text_content_v1 = '\n'.join(cleaned_lines)
+            
+            try:
+                advice = json.loads(text_content_v1)
+                print("✅ JSON 解析成功（移除注释后）", flush=True)
+                return advice
+            except json.JSONDecodeError:
+                pass
+            
+            # 修复策略 2: 修复未转义的引号
+            # 在 JSON 字符串内的引号应该转义为 \"
+            import re
+            
+            # 找到所有 "key": "value" 的模式，修复 value 中未转义的引号
+            def fix_quotes_in_json_string(text):
+                # 匹配 JSON 字符串值（类似 "key": "value"）
+                def replace_unescaped_quotes(match):
+                    key = match.group(1)
+                    value = match.group(2)
+                    # 在 value 中查找未转义的引号
+                    # 先保护已经转义的 \"
+                    value = value.replace('\\"', '【ESCAPED_QUOTE】')
+                    # 把未转义的 " 替换为 \"
+                    value = value.replace('"', '\\"')
+                    # 恢复已转义的
+                    value = value.replace('【ESCAPED_QUOTE】', '\\"')
+                    return f'"{key}": "{value}"'
+                
+                # 匹配模式："key": "value"
+                pattern = r'"([^"]+)"\s*:\s*"([^"]*?)"'
+                return re.sub(pattern, replace_unescaped_quotes, text)
+            
+            try:
+                text_content_v2 = fix_quotes_in_json_string(text_content_v1)
+                advice = json.loads(text_content_v2)
+                print("✅ JSON 解析成功（修复引号后）", flush=True)
+                return advice
+            except Exception as e:
+                print(f"❌ JSON 修复失败: {e}", flush=True)
+                # 仍然失败，返回详细错误
+                raise parse_error
     
     except json.JSONDecodeError as e:
         print(f"❌ JSON 解析失败: {e}")
-        print(f"原始响应: {text_content[:500]}...")
+        
+        # 显示错误位置附近的内容
+        if 'text_content' in locals() and e.lineno and e.colno:
+            lines = text_content.split('\n')
+            error_line_idx = e.lineno - 1
+            
+            print(f"\n❌ 错误位置周围的内容：")
+            start_line = max(0, error_line_idx - 2)
+            end_line = min(len(lines), error_line_idx + 3)
+            
+            for i in range(start_line, end_line):
+                prefix = ">>> " if i == error_line_idx else "    "
+                print(f"{prefix}Line {i+1}: {lines[i]}")
+            
+            if error_line_idx < len(lines):
+                error_line = lines[error_line_idx]
+                print(f"\n错误列指示: {' ' * (e.colno - 1)}^")
+        
+        # 保存完整响应到文件供分析
+        if 'text_content' in locals():
+            error_file = Path(__file__).parent.parent.parent / "data" / "llm_error_response.json"
+            error_file.parent.mkdir(exist_ok=True)
+            with open(error_file, 'w', encoding='utf-8') as f:
+                f.write(text_content)
+            print(f"\n💾 完整响应已保存到: {error_file}")
+        
         return {
             'error': f'JSON 解析失败: {str(e)}',
-            'raw_response': text_content[:1000]
+            'error_line': e.lineno if hasattr(e, 'lineno') else None,
+            'error_column': e.colno if hasattr(e, 'colno') else None,
+            'raw_response': text_content if 'text_content' in locals() else 'N/A'
         }
     except Exception as e:
         print(f"❌ AI 调用失败: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             'error': f'AI 调用失败: {str(e)}'
         }
