@@ -72,6 +72,8 @@ class SearchSession:
             # 4. 根据意图执行搜索
             if intent == "FINANCE":
                 await self._search_local(query, limit)
+            elif intent == "PORTFOLIO":
+                await self._handle_portfolio_audit(query)
             else:
                 await self._search_web_stream(query)
             
@@ -79,6 +81,65 @@ class SearchSession:
             print(f"❌ [SearchSession {self.session_id}] 查询失败: {e}")
             await self._send_error(str(e), "搜索过程中发生错误")
     
+    async def _handle_portfolio_audit(self, query: str):
+        """
+        处理投资组合审计意图，调用 audit-portfolio 技能
+        """
+        try:
+            # 发送状态
+            await self._send_status("auditing_portfolio", "正在审计投资组合合规性...")
+            
+            print(f"📊 [SearchSession {self.session_id}] 开始投资组合审计 (Skill: audit-portfolio)")
+            
+            # 构造专门针对组合审计的 AI 提示词和选项
+            # 这样可以绕过全局的“必须首先调用 search_reports”协议
+            options = {
+                "system_prompt": "你是一个专业的私人财富管理顾问。当用户询问组合是否合规或检查持仓风险时，请优先使用 audit-portfolio 技能进行审计。请输出结构化的审计结论。",
+                "allowed_tools": ["Skill", "Bash", "Read"], # 确保包含 Skill 工具
+                "max_turns": 10,
+                "resume": self.resume_id
+            }
+            
+            total_cost = 0.0
+            duration_ms = 0
+            
+            # 使用 query_stream 实现流式输出
+            async for message in self.search_service.ai_client.query_stream(query, options):
+                # 系统消息：提取 session_id
+                if message.type == "system":
+                    if hasattr(message, 'session_id') and message.session_id:
+                        self.resume_id = message.session_id
+                
+                # 助手消息：流式发送文本
+                elif message.type == "assistant":
+                    if isinstance(message.content, list):
+                        for block in message.content:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                text = block.get('text', '')
+                                if text:
+                                    await self._send_chunk(text)
+                    elif isinstance(message.content, str):
+                        await self._send_chunk(message.content)
+                
+                # 结果消息：提取成本、耗时和 session_id
+                elif message.type == "result":
+                    total_cost = getattr(message, 'total_cost_usd', 0.0)
+                    duration_ms = getattr(message, 'duration_ms', 0)
+                    
+                    result_session_id = getattr(message, 'session_id', None)
+                    if result_session_id:
+                        self.resume_id = result_session_id
+            
+            # 发送完成消息
+            await self._send_complete(total_cost, duration_ms)
+            print(f"✅ [SearchSession {self.session_id}] 投资组合审计完成")
+            
+        except Exception as e:
+            print(f"❌ [SearchSession {self.session_id}] 投资组合审计失败: {e}")
+            import traceback
+            traceback.print_exc()
+            await self._send_error(str(e), "投资组合审计失败")
+
     async def _classify_intent(self, query: str) -> Dict[str, Any]:
         """
         识别用户查询意图

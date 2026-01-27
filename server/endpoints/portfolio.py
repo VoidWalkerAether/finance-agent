@@ -19,6 +19,8 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 # 导入投资建议生成器
 from agent.custom_scripts.portfolio_advice_generator import generate_portfolio_advice
+# 导入投资审计服务
+from server.services.portfolio_audit import audit_portfolio_against_principles
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
@@ -241,6 +243,48 @@ async def generate_advice(request: Request):
             status_code=400,
             content={"error": str(e)}
         )
+    except Exception as e:
+        import traceback
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+        )
+
+
+@router.get("/audit")
+async def audit_portfolio(user_id: str = 'default'):
+    """
+    审计投资组合与原则的一致性
+    
+    Skill: audit_portfolio_against_principles
+    功能：检查投资组合是否符合投资原则约束
+    
+    参数:
+        - user_id: 用户ID（可选，默认 'default'）
+    
+    返回:
+        - success: 是否成功
+        - data: 审计结果
+            - overall_status: 总体状态 (ok/warning/violated)
+            - violation_count: 违规数量
+            - warning_count: 警告数量
+            - violations: 违规详情列表
+    """
+    try:
+        # 调用 Skill
+        audit_result = await audit_portfolio_against_principles(
+            db_path=db_manager.db_path,
+            user_id=user_id
+        )
+        
+        return {
+            "success": True,
+            "data": audit_result
+        }
+        
     except Exception as e:
         import traceback
         return JSONResponse(

@@ -33,22 +33,24 @@ class SearchService:
             query: 用户查询语句
             
         Returns:
-            Dict: 包含 intent (FINANCE/GENERAL), reason, confidence
+            Dict: 包含 intent (PORTFOLIO/FINANCE/GENERAL), reason, confidence
         """
+        print(f"\n[SearchService] 🎯 正在识别意图: '{query}'")
         prompt = f"""
-        你是一个智能金融助手。请分析以下用户查询，并将其分类为以下两类之一：
-        1. FINANCE: 关于股票、基金、市场分析、投资建议、黄金、宏观经济或具体金融报告的深度查询。
-        2. GENERAL: 关于常识、天气、非金融新闻、闲聊或通用的网络信息查询。
+            你是一个智能金融助手。请分析以下用户查询，并将其分类为以下三类之一：
+            1. PORTFOLIO: 关于用户自己的投资组合、资产配置、持仓检查、合规性审计或投资原则的一致性检查。
+            2. FINANCE: 关于市场研报、股票基金分析、宏观经济趋势或具体金融数据的外部知识库查询。
+            3. GENERAL: 关于常识、天气、非金融新闻、闲聊或通用的网络信息查询。
 
-        用户查询: "{query}"
+            用户查询: "{query}"
 
-        请仅返回一个 JSON 对象，格式如下：
-        {{
-          "intent": "FINANCE" | "GENERAL",
-          "reason": "分类理由的简短说明",
-          "confidence": 0.0 到 1.0 之间的置信度
-        }}
-        """
+            请仅返回一个 JSON 对象，格式如下：
+            {{
+              "intent": "PORTFOLIO" | "FINANCE" | "GENERAL",
+              "reason": "分类理由的简短说明",
+              "confidence": 0.0 到 1.0 之间的置信度
+            }}
+            """
         
         try:
             # 使用较轻量的配置进行单次意图识别
@@ -74,7 +76,9 @@ class SearchService:
                     json_match = re.search(r'\{.*\}', text, re.DOTALL)
                     if json_match:
                         try:
-                            return json.loads(json_match.group())
+                            intent_result = json.loads(json_match.group())
+                            print(f"[SearchService] ✅ 识别结果: {intent_result.get('intent')} (理由: {intent_result.get('reason')})")
+                            return intent_result
                         except json.JSONDecodeError:
                             continue
             

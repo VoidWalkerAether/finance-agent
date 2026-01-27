@@ -21,6 +21,8 @@ sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
 from .ai_client import AIClient, AIQueryOptions
+# 导入 SearchService 用于意图识别
+from server.services.search_service import SearchService
 from .message_types import (
     WSClient, SDKMessage, SDKUserMessage,
     WSAssistantMessage, WSToolUseMessage, WSToolResultMessage,
@@ -80,6 +82,9 @@ class Session:
         # AI 客户端
         self.ai_client = AIClient()
         
+        # 初始化 SearchService 用于意图识别
+        self.search_service = SearchService(self.db)
+        
         # SDK 会话 ID (用于多轮对话)
         self.sdk_session_id: Optional[str] = None
         
@@ -120,6 +125,19 @@ class Session:
                     print(f"🔄 [Session] 恢复会话: {self.sdk_session_id}")
                 else:
                     print(f"🆕 [Session] 创建新会话")
+                
+                # 1. 意图识别 (拦截 WebSocket 消息并分类)
+                print(f"🔍 [Session {self.id}] 正在识别用户意图...")
+                intent_data = await self.search_service.classify_intent(content)
+                intent = intent_data.get("intent", "GENERAL")
+                
+                # 2. 根据意图定制系统提示词
+                if intent == "PORTFOLIO":
+                    print(f"📊 [Session {self.id}] 识别为 PORTFOLIO 意图，切换至审计模式")
+                    # 动态覆盖 system_prompt，绕过“研报助手”强制搜研报的协议
+                    options["system_prompt"] = "你是一个专业的私人财富管理顾问。当用户询问组合是否合规或检查持仓风险时，请优先使用 audit-portfolio 技能进行审计。请输出结构化的审计结论。"
+                    # 显式继承并允许 Skill 工具
+                    options["allowed_tools"] = self.ai_client.default_options.allowed_tools
                 
                 print(f"🚀 [Session] 开始调用 AI 客户端流式查询...")
                 message_count = 0
